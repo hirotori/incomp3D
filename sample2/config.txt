@@ -1,0 +1,28 @@
+41 9 2  !grid points (imax,jmax,kmax)
+10.0 2.00 0.01  !length (x,y,z)     
+1 130000 10000  !time step (start,end,write_interval
+0.001 !time spacing
+100 !Reynolds Number
+0.03 0.0 0.0  !body force (x,y,z) 
+1.0 !Pressure reference (also for initial condition)
+1.0 0.0 0.0  !initial condition for velocity (x,y,z)     
+1000 !max iteration no. for poisson eq.
+0.001 !tolerance for poisson eq.
+1.3 !accel. coefficient for poisson eq.
+5 0.0 0.0 0.0 1.0  !B.C. for i = 1    face. [bc_id, u, v, w, p]
+5 0.0 0.0 0.0 1.0  !B.C. for i = imax face. [bc_id, u, v, w, p]
+3 0.0 0.0 0.0 1.0  !B.C. for j = 1    face. [bc_id, u, v, w, p]
+3 0.0 0.0 0.0 1.0  !B.C. for j = jmax face. [bc_id, u, v, w, p]
+4 0.0 0.0 0.0 1.0  !B.C. for k = 1    face. [bc_id, u, v, w, p]
+4 0.0 0.0 0.0 1.0  !B.C. for k = kmax face. [bc_id, u, v, w, p]
+ud
+1
+!**Boundary Condition**
+! Inlet           1
+! Outlet          2
+! Wall            3
+! Slip            4
+! Periodic        5
+! Outlet unsteady  6
+! Periodic with buffer  7
+!bc velocity(u,v,or w) interplated as a pair cell index. 
