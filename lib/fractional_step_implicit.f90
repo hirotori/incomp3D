@@ -2,7 +2,7 @@ module fractional_step_implicit_m
     use floating_point_parameter_m
     use fluid_field_m
     use mesh_m
-    use fractional_step_m, only : solver_fs, mat_a, slvr_init_common, set_matrix_p, calc_convective_and_diffusive_flux
+    use fractional_step_m, only : solver_fs, mat_a, slvr_init_common, calc_convective_and_diffusive_flux
     use setting_parameter_m, only : slv_setting, case_setting
     use boundary_condition_m, only : bc_t, boundary_condition_velocity
     implicit none
@@ -38,12 +38,12 @@ subroutine init_solver_2(this, fld, grd, settings_slv, setting_case)
 
     call slvr_init_common(this, fld, grd, settings_slv, setting_case)
     
-    call set_matrix_(this%matrix_v, grd%ds, grd%dv, grd%dx, setting_case%reynolds_number, setting_case%dt)
+    call set_matrix_(this%matrix_v, grd%ds, grd%dv, grd%dx, setting_case%reynolds_number, setting_case%dt, this%diffus_type)
     allocate(this%rhs_(1:3,2:mx(1),2:mx(2),2:mx(3)))
 
 end subroutine
 
-subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk, bc_types)
+subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
     !!中間速度を計算する.
     class(solver_fs_imp_t),intent(inout) :: this
     integer(ip),intent(in) :: extents(3)
@@ -65,6 +65,8 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
         !!更新される速度(中間段階)
     real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
         !!面に垂直な流速成分.
+    real(dp),intent(in) :: dudr(:,:,:,:,:)
+        !!速度勾配テンソル.
     type(bc_t),intent(in) :: bc_types(:)
     
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:)
@@ -74,7 +76,7 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
     allocate(conv(3,2:extents(1),2:extents(2),2:extents(3)))
     allocate(diff(3,2:extents(1),2:extents(2),2:extents(3)))    
     
-    call calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, conv, diff)
+    call calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, conv, diff)
 
     rei = 1.0_dp/re
     do k = 2, extents(3)
@@ -123,6 +125,7 @@ subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
         do k = 2, kmx
         do j = 2, jmx
         do i = 2, imx
+            !@TODO large stencilの場合の対応.
             v(l,i,j,k) = (1.0_dp - this%alpha)*v(l,i,j,k) &
                                  + this%alpha*(this%rhs_(l,i,j,k) &
                                  - this%matrix_v%aw*v(l,i-1,j  ,k  ) - this%matrix_v%ae*v(l,i+1,j  ,k  ) &
@@ -180,7 +183,7 @@ subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
 
 end subroutine
 
-subroutine set_matrix_(mat, ds, dv, dx, re, dt)
+subroutine set_matrix_(mat, ds, dv, dx, re, dt, stencil_type)
     !!係数行列を設定する.
     type(mat_a),intent(inout) :: mat
     real(DP),intent(in) :: ds(3)
@@ -193,7 +196,10 @@ subroutine set_matrix_(mat, ds, dv, dx, re, dt)
         !!レイノルズ数
     real(DP),intent(in) :: dt
         !!時間刻み
+    integer(ip),intent(in) :: stencil_type
+        !!large stencilかそうで無いかを区別する.
 
+    !@TODO large stencilの場合係数が微妙に変わる.それの実装.
     mat%ae = -0.5_dp*dt*ds(1)/(re*dx(1))
     mat%aw = mat%ae
     mat%an = -0.5_dp*dt*ds(2)/(re*dx(2))

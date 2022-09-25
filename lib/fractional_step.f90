@@ -61,7 +61,7 @@ subroutine slvr_init_common(this, fld, grd, settings_slv, setting_case)
 
 end subroutine
 
-subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk, bc_types)
+subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
     !!中間速度を計算する.
     class(solver_fs),intent(inout) :: this
     integer(ip),intent(in) :: extents(3)
@@ -84,6 +84,8 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
     real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
         !!面に垂直な流速成分. 
         !!@note 初期状態から計算の場合は, ループ開始前に速度の初期値で更新しておく必要がある.
+    real(dp),intent(in) :: dudr(:,:,:,:,:)
+        !!速度勾配テンソル.
     type(bc_t),intent(in) :: bc_types(:)
     
     integer(ip) imx, jmx, kmx, i, j, k
@@ -100,7 +102,7 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
 
     !メモリ量に不安がある場合は今まで通り上の方法で. 
     !移流/粘性項の評価が選択式に対応していないことに注意. 
-    call calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, conv, diff)
+    call calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, conv, diff)
 
     rei = 1.0_dp/re
     do k = 2, kmx
@@ -244,7 +246,7 @@ subroutine fs_prediction_v2(imx, jmx, kmx, ds, dv, dx, del_t, re, force, v0, v, 
 
 end subroutine
 
-subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, convec_flux, diffusi_flux)
+subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, convec, diff)
     !!右辺を計算するのに必要な移流と拡散流束を計算する. 陽解法では必要ないかも.
     !!@note 陰解法に必要な右辺項は外部で計算する.
     class(solver_fs),intent(in) :: this
@@ -258,12 +260,16 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
         !!既知段階速度.
     real(DP),intent(in) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
         !!面流束.
-    real(dp),intent(out) :: convec_flux(:,2:,2:,2:)
+    real(dp),intent(in) :: dudr(:,:,:,:,:)
+        !!速度勾配テンソル
+    real(dp),intent(out) :: convec(:,2:,2:,2:)
         !!移流流束. 空間内部のみに存在するので, インデックスは2から始まる.
-    real(dp),intent(out) :: diffusi_flux(:,2:,2:,2:)
+    real(dp),intent(out) :: diff(:,2:,2:,2:)
         !!拡散流束. 空間内部のみに存在するので, インデックスは2から始まる.
     real(DP) me, mw, mn, ms, mt, mb
+    real(dp),dimension(3) :: dif_e, dif_w, dif_n, dif_s, dif_t, dif_b
     real(DP) rei
+
 
     integer(IP) i, j, k, ld, imx, jmx, kmx
 
@@ -289,7 +295,7 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
         select case(this%convec_type) !計算効率的には良くないが, そこまで効率を求めていないので
         case("ud")
             !::::1st order upwind
-            convec_flux(:,i,j,k) = 0.5_dp*(me + abs(me))*v0(:,i  ,j  ,k  ) + 0.5_dp*(me - abs(me))*v0(:,i+1,j  ,k  ) &
+            convec(:,i,j,k) = 0.5_dp*(me + abs(me))*v0(:,i  ,j  ,k  ) + 0.5_dp*(me - abs(me))*v0(:,i+1,j  ,k  ) &
                                 + 0.5_dp*(mw - abs(mw))*v0(:,i-1,j  ,k  ) + 0.5_dp*(mw + abs(mw))*v0(:,i  ,j  ,k  ) &
                                 + 0.5_dp*(mn + abs(mn))*v0(:,i  ,j  ,k  ) + 0.5_dp*(mn - abs(mn))*v0(:,i  ,j+1,k  ) &
                                 + 0.5_dp*(ms - abs(ms))*v0(:,i  ,j-1,k  ) + 0.5_dp*(ms + abs(ms))*v0(:,i  ,j  ,k  ) &
@@ -297,7 +303,7 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
                                 + 0.5_dp*(mb - abs(mb))*v0(:,i  ,j  ,k-1) + 0.5_dp*(mb + abs(mb))*v0(:,i  ,j  ,k  )
         case("cd")
             !::::2nd order central difference
-            convec_flux(:,i,j,k) = 0.5_dp*mw*(v0(:,i-1,j  ,k  ) + v0(:,i,j,k)) + 0.5_dp*me*(v0(:,i,j,k) + v0(:,i+1,j  ,k  )) &
+            convec(:,i,j,k) = 0.5_dp*mw*(v0(:,i-1,j  ,k  ) + v0(:,i,j,k)) + 0.5_dp*me*(v0(:,i,j,k) + v0(:,i+1,j  ,k  )) &
                                  + 0.5_dp*ms*(v0(:,i  ,j-1,k  ) + v0(:,i,j,k)) + 0.5_dp*mn*(v0(:,i,j,k) + v0(:,i,  j+1,k  )) &
                                  + 0.5_dp*mb*(v0(:,i  ,j  ,k-1) + v0(:,i,j,k)) + 0.5_dp*mt*(v0(:,i,j,k) + v0(:,i,  j  ,k+1))
         
@@ -307,11 +313,26 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
         
         !----diffusion----
         !::::2nd order central
-        diffusi_flux(:,i,j,k) = (v0(:,i-ld,j   ,k   ) - 2.0_dp*v0(:,i  ,j  ,k  ) + v0(:,i+ld,j   ,k   ))*ds(1)/dx(1) &
-                              + (v0(:,i   ,j-ld,k   ) - 2.0_dp*v0(:,i  ,j  ,k  ) + v0(:,i   ,j+ld,k   ))*ds(2)/dx(2) &
-                              + (v0(:,i   ,j   ,k-ld) - 2.0_dp*v0(:,i  ,j  ,k  ) + v0(:,i   ,j   ,k+ld))*ds(3)/dx(3)
-    
+        if ( ld == 1 ) then
+            dif_w(:) = (  v0(:,i-1,j  ,k  ) - v0(:,i  ,j  ,k  ))/dx(1)
+            dif_e(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i+1,j  ,k  ))/dx(1)
+            dif_s(:) = (  v0(:,i  ,j-1,k  ) - v0(:,i  ,j  ,k  ))/dx(2)
+            dif_n(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j+1,k  ))/dx(2)
+            dif_b(:) = (  v0(:,i  ,j  ,k-1) - v0(:,i  ,j  ,k  ))/dx(3)
+            dif_t(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i+1,j  ,k+1))/dx(3)                
+        else if ( ld == 2 ) then
+            !面勾配*法線を計算する. セル勾配から面へ内挿する. 境界では片側差分となっている.
+            dif_w(:) = -(dudr(:,1,i-1,j  ,k  ) + dudr(:,1,i  ,j  ,k  ))*0.5_dp
+            dif_e(:) =  (dudr(:,1,i  ,j  ,k  ) + dudr(:,1,i+1,j  ,k  ))*0.5_dp
+            dif_s(:) = -(dudr(:,2,i  ,j-1,k  ) + dudr(:,2,i  ,j  ,k  ))*0.5_dp
+            dif_n(:) =  (dudr(:,2,i  ,j  ,k  ) + dudr(:,2,i  ,j+1,k  ))*0.5_dp
+            dif_b(:) = -(dudr(:,3,i  ,j  ,k-1) + dudr(:,3,i  ,j  ,k  ))*0.5_dp
+            dif_t(:) =  (dudr(:,3,i  ,j  ,k  ) + dudr(:,3,i  ,j  ,k+1))*0.5_dp
 
+        end if
+
+        diff(:,i,j,k) = (dif_e(:) + dif_w(:))*ds(1) + (dif_n(:) + dif_s(:))*ds(2) + (dif_t(:) + dif_b(:))*ds(3)
+        
         !右辺のフラックスは例えば次のように作成する.
         ! rhs_flux(:,i,j,k) = v0(:,i,j,k)*dv - del_t*(conv(:) - rei*diff(:) - force(:)*dv)
 
@@ -428,6 +449,8 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, del_t, coeffs, mi, mj, mk, p, se
         end do
         end do
 
+        if ( den_ == 0.0_dp ) exit !初期値や条件によってはゼロのままも有り得る. NANを防ぐ.
+            
         resid_ = sqrt(resid_/icmx)/sqrt(den_/icmx)
 
         if ( resid_ <= tol .or. itr >= itr_mx) then
