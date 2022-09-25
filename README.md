@@ -1,6 +1,9 @@
 # Incompressible Fluid FLow Solver For Equil-Spaced Rectilinear Mesh
 等間隔直交格子のための非圧縮性流体ソルバ.
 
+## 現在の状態
+移流項と粘性項の評価を選択可能にした. 陰解法には対応出来ていない.
+
 ## 概要
 等間隔直交格子で流れ計算を行う. 
 
