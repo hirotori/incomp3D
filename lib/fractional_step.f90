@@ -98,10 +98,10 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
     allocate(conv(3,2:imx,2:jmx,2:kmx))
     allocate(diff(3,2:imx,2:jmx,2:kmx))
 
+    !元々のコード. 移流/粘性項の評価が選択式に対応していないことに注意. 
     ! call fs_prediction_v2(imx, jmx, kmx, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk)
 
-    !メモリ量に不安がある場合は今まで通り上の方法で. 
-    !移流/粘性項の評価が選択式に対応していないことに注意. 
+    !フラックスを作ってから後で右辺を計算する. メモリ量に不安がある場合は今まで通り上の方法で. 
     call calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, conv, diff)
 
     rei = 1.0_dp/re
@@ -319,7 +319,7 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
             dif_s(:) = (  v0(:,i  ,j-1,k  ) - v0(:,i  ,j  ,k  ))/dx(2)
             dif_n(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j+1,k  ))/dx(2)
             dif_b(:) = (  v0(:,i  ,j  ,k-1) - v0(:,i  ,j  ,k  ))/dx(3)
-            dif_t(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i+1,j  ,k+1))/dx(3)                
+            dif_t(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j  ,k+1))/dx(3)                
         else if ( ld == 2 ) then
             !面勾配*法線を計算する. セル勾配から面へ内挿する. 境界では片側差分となっている.
             dif_w(:) = -(dudr(:,1,i-1,j  ,k  ) + dudr(:,1,i  ,j  ,k  ))*0.5_dp
