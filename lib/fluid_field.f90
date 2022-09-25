@@ -137,9 +137,9 @@ subroutine calc_gradient_tensor(extents, dv, ds, dx, velocity, dudr)
 
     !j-direction.
     igc(1) = 1     ;  ic(1) = 2
-    igc(2) = imx+1 ;  ic(2) = imx
+    igc(2) = jmx+1 ;  ic(2) = jmx
     do l = 1, 2
-        i = igc(l)
+        j = igc(l)
         jnb = ic(l)
         do k = 2, kmx
         do i = 2, imx

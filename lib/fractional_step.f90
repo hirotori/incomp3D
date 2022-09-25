@@ -26,7 +26,7 @@ module fractional_step_m
         procedure calc_corrected_velocity
     end type
 
-    public solver_fs, slvr_init_common, calc_convective_and_diffusive_flux, mat_a
+    public solver_fs, slvr_init_common, calc_convective_and_diffusive_flux, mat_a, cal_face_velocity
 contains
 subroutine init_solver(this, fld, grd, settings_slv, setting_case)
     !!ソルバを初期化する.

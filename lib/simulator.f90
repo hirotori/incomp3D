@@ -67,7 +67,7 @@ subroutine run(this, current_case, solver)
         call solver%predict_pseudo_velocity(extents, grid%ds, grid%dv, grid%dx, dt, re, &
                                             current_case%settings_case%body_force, &
                                             this%v_old, &
-                                            fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, &
+                                            fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%dudr, &
                                             current_case%bc_types)
 
         call boundary_condition_velocity(extents, fluid%velocity, current_case%bc_types)
