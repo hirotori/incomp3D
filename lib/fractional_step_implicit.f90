@@ -11,6 +11,7 @@ module fractional_step_implicit_m
 
     type,extends(solver_fs) :: solver_fs_imp_t
         !!陰解法Fractional stepクラス. 粘性項のみをクランク･ニコルソン法で評価する半陰解法.
+        !!@warning 現状, diffus_type = 2には対応出来ていない. diffus_type = 2を選ぶと恐らく破綻する(整合性がないので).
         type(mat_a) :: matrix_v
         real(dp),allocatable :: rhs_(:,:,:,:)
         integer(ip) :: iter_max = 1000
@@ -125,7 +126,7 @@ subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
         do k = 2, kmx
         do j = 2, jmx
         do i = 2, imx
-            !@TODO large stencilの場合の対応.
+            !@TODO large stencilの場合の対応. ステンシルが一つ飛びになる.
             v(l,i,j,k) = (1.0_dp - this%alpha)*v(l,i,j,k) &
                                  + this%alpha*(this%rhs_(l,i,j,k) &
                                  - this%matrix_v%aw*v(l,i-1,j  ,k  ) - this%matrix_v%ae*v(l,i+1,j  ,k  ) &

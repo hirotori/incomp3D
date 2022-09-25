@@ -60,9 +60,9 @@ subroutine set_bc_type(types, type_ids, properties, extents)
             if ( types(l)%type == bc_periodic_buffer ) then
                 pair_ids(:) = int(types(l)%v_bc, ip) ![u,v,w]を[i,j,k]と対応させる.
 
-                if ( mod(l,2) /= 0 ) then !ist, jst, kst
+                if ( mod(l,2) /= 0 ) then !i=1 or j=1 or k=1
                     pos_ = (l+1)/2
-                else                      !ifn, jfn, kfn
+                else                      !i=imax+1 or j=jmax+1 or k=kmax+1
                     pos_ = l/2
                 end if
 
@@ -200,13 +200,18 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
         inb = bc_type(m)%neighbor_index
 
         select case (bc_type(m)%type)
-        case (bc_inlet, bc_wall, bc_slip, bc_periodic, bc_periodic_buffer)
+        case (bc_inlet, bc_wall, bc_slip, bc_periodic)
            
             p(i,2:jmx,2:kmx) = p(inb,2:jmx,2:kmx)
            
         case (bc_outlet)
 
             p(i,2:jmx,2:kmx) = 2.0_dp*bc_type(m)%p_bc - p(inb,2:jmx,2:kmx)
+
+        case (bc_periodic_buffer)
+            !これだけNeumann境界を別途実装する必要があった. インデックスで判定出来ないので, 
+            !オフセットをm=1なら1, m=2なら-1となるように設定.
+            p(i,2:jmx,2:kmx) = p(i-2*m+3,2:jmx,2:kmx)
 
         case (bc_outlet_unsteady)
             error stop "Sorry, Not Implemented."
@@ -223,13 +228,18 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
         jnb = bc_type(m)%neighbor_index
 
         select case (bc_type(m)%type)
-        case (bc_inlet, bc_wall, bc_slip, bc_periodic, bc_periodic_buffer)
+        case (bc_inlet, bc_wall, bc_slip, bc_periodic)
            
             p(2:imx,j,2:kmx) = p(2:imx,jnb,2:kmx)
                
         case (bc_outlet)
 
             p(2:imx,j,2:kmx) = 2.0_dp*bc_type(m)%p_bc - p(2:imx,jnb,2:kmx)
+
+        case (bc_periodic_buffer)
+            !これだけNeumann境界を別途実装する必要があった. インデックスで判定出来ないので, 
+            !オフセットをm=3なら1, m=4なら-1となるように設定.
+            p(2:imx,j,2:kmx) = p(2:imx,j-2*(m-2)+3,2:kmx)
 
         case (bc_outlet_unsteady)
             error stop "Sorry, Not Implemented."
@@ -245,7 +255,7 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
         knb = bc_type(m)%neighbor_index
 
         select case (bc_type(m)%type)
-        case (bc_inlet, bc_wall, bc_slip, bc_periodic, bc_periodic_buffer)
+        case (bc_inlet, bc_wall, bc_slip, bc_periodic)
            
             p(2:imx,2:jmx,k) = p(2:imx,2:jmx,knb)
                
@@ -253,6 +263,11 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
 
             p(2:imx,2:jmx,k) = 2.0_dp*bc_type(m)%p_bc - p(2:imx,2:jmx,knb)
 
+        case (bc_periodic_buffer)
+            !これだけNeumann境界を別途実装する必要があった. インデックスで判定出来ないので, 
+            !オフセットをm=5なら1, m=6なら-1となるように設定.
+            p(2:imx,2:jmx,k) = p(2:imx,2:jmx,k-2*(m-4)+3)
+        
         case (bc_outlet_unsteady)
             error stop "Sorry, Not Implemented."
 

@@ -14,7 +14,8 @@ module setting_parameter_m
         real(DP) relax_coeff
         !!加速係数.
         character(2) :: conv_type
-        integer(ip) :: diff_type 
+        integer(ip) :: diff_type
+        logical :: correct_face_flux
     end type
 
     type case_setting
@@ -82,6 +83,7 @@ subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_
     end do
     read(unit,*,err=99) tmp_ ; setting%conv_type = trim(adjustl(tmp_))
     read(unit,*,err=99) setting%diff_type
+    read(unit,*,err=99) setting%correct_face_flux
     print "('extent : (', i0, ', ', i0, ', ', i0, ') ')", imx, jmx, kmx
     print "('Length : (', g0.2, ', ', g0.2, ', ', g0.2, ') ')", l_xyz(:)
     print "('time step : ',i0, '<= n <=', i0)", setting_c%nstart, setting_c%nend
@@ -107,6 +109,7 @@ subroutine create_sample_()
     integer(ip) unit
     integer(ip) l
     character(8) :: label_(6) = ["i = 1   ", "i = imax", "j = 1   ", "j = jmax", "k = 1   ", "k = kmax"] 
+    logical :: dummy_flag = .false.
     open(newunit = unit, file = "config_sample.txt", status = "replace")
         write(unit, "(3(i0,1x), ' !grid points (imax,jmax,kmax)')") 21, 21, 21
         write(unit, "(3(g0.3,1x), ' !length (x,y,z)     ')") 10.0d0, 4.0d0, 2.0d0 
@@ -125,6 +128,7 @@ subroutine create_sample_()
         write(unit, "(A         , ' !convection term. ""ud"": 1st order upwind, ""cd"": central diff')")
         write(unit, "(i0         , '!diffusion  term.   1 : compact stencil ,   2 : large stencil')")
         write(unit, "('!large stencil is same here as cell face gradients')")
+        write(unit, "(A         , ' ![T/F] if T, face fluxes are corrected by pressure.')") dummy_flag
         write(unit,"(A)") "!**Boundary Condition**"
         write(unit,"(A,1x,i0)") "! Inlet          ", bc_inlet
         write(unit,"(A,1x,i0)") "! Outlet         ", bc_outlet

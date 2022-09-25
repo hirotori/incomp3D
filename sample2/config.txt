@@ -1,6 +1,6 @@
 41 9 2  !grid points (imax,jmax,kmax)
 10.0 2.00 0.01  !length (x,y,z)     
-1 130000 10000  !time step (start,end,write_interval
+1 30 1  !time step (start,end,write_interval
 0.001 !time spacing
 100 !Reynolds Number
 0.03 0.0 0.0  !body force (x,y,z) 
@@ -17,6 +17,7 @@
 4 0.0 0.0 0.0 1.0  !B.C. for k = kmax face. [bc_id, u, v, w, p]
 ud
 1
+T
 !**Boundary Condition**
 ! Inlet           1
 ! Outlet          2

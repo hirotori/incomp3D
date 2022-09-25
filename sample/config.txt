@@ -17,6 +17,7 @@
 4 0.0 0.0 0.0 1.0  !B.C. for k = kmax face. [bc_id, u, v, w, p]
 ud
 1
+T
 !**Boundary Condition**
 ! Inlet           1
 ! Outlet          2

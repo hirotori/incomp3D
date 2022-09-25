@@ -20,6 +20,7 @@ module fractional_step_m
             !!移流項の評価方法. "ud1":1次精度風上法, "cd":2次精度中心差分, "qu":QUICK
         integer(ip),allocatable :: diffus_type
             !!拡散項の評価方法. 1:通常の中心差分, 2:ステンシルが一つ飛びの中心差分. ハウスコードに対応.
+        logical :: correct_face_flux = .true.
         contains
         procedure :: init => init_solver 
         procedure :: predict_pseudo_velocity
@@ -51,11 +52,13 @@ subroutine slvr_init_common(this, fld, grd, settings_slv, setting_case)
     call set_matrix_p(this%coeffs_p, grd%ds, grd%dv) !係数行列は1回だけ更新すれば良い.
     this%convec_type = settings_slv%conv_type
     this%diffus_type = settings_slv%diff_type
+    this%correct_face_flux = settings_slv%correct_face_flux
 
     print "('   -------- Fractional Step Method ---------    ')"
     print "('      - 3D unsteady problem                     ')"
     print "('      - Convection : ', A)", merge("Up-wind", "Central", this%convec_type=="ud")
-    print "('      - Diffusion  : ', A)", merge("compact", " large ", this%diffus_type==1)    
+    print "('      - Diffusion  : ', A)", merge("compact", " large ", this%diffus_type==1)  
+    print "('      - face flux correction : ', A)", merge("Yes","No ",this%correct_face_flux)
     print "('      - SOR linear solver for Poisson           ')"
     print "('   -----------------------------------------    ')"
 
@@ -146,8 +149,16 @@ subroutine calc_corrected_velocity(this, extents, ds, dv, del_t, mi, mj, mk, p, 
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
 
-    call fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v, mi, mj, mk)
+    call fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v)
 
+    !面の流束の速度補正. 
+    if ( this%correct_face_flux ) then
+        call fs_correction_face_flux(imx, jmx, kmx, ds, dv, del_t, p, mi, mj, mk)
+    else
+        !圧力で補正しない場合. mi, mj, mkは単に速度の線形補間として取り扱う. 
+        !その場合ここで更新する必要がある. vはこの時点で新しい段階の速度なので, mi, mj, mkも新しい速度の線形補間となる.
+        call cal_face_velocity(imx, jmx, kmx, v, mi, mj, mk)
+    end if
 
 end subroutine
 
@@ -247,7 +258,7 @@ subroutine fs_prediction_v2(imx, jmx, kmx, ds, dv, dx, del_t, re, force, v0, v, 
 end subroutine
 
 subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, convec, diff)
-    !!右辺を計算するのに必要な移流と拡散流束を計算する. 陽解法では必要ないかも.
+    !!右辺を計算するのに必要な移流と拡散流束を計算する.
     !!@note 陰解法に必要な右辺項は外部で計算する.
     class(solver_fs),intent(in) :: this
     integer(IP),intent(in) :: extents(3)
@@ -482,7 +493,7 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, del_t, coeffs, mi, mj, mk, p, se
 
 end subroutine
 
-subroutine fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v, mi, mj, mk)
+subroutine fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v)
     !!求めた圧力で速度を修正し, n+1段階の速度を求める.
     integer(IP),intent(in) :: imx, jmx, kmx
     real(DP),intent(in) :: ds(3), dv
@@ -490,7 +501,6 @@ subroutine fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v, mi, mj, mk)
     real(DP),intent(in) :: p(:,:,:)
     real(DP),intent(inout) :: v(:,:,:,:)
         !!中間段階の速度(1st step 終了後の速度).
-    real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
 
     integer(IP) i, j, k
 
@@ -505,7 +515,20 @@ subroutine fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v, mi, mj, mk)
     end do
     end do
 
-    !面速度 = 面に垂直な流速
+end subroutine
+
+subroutine fs_correction_face_flux(imx, jmx, kmx, ds, dv, del_t, p, mi, mj, mk)
+    !!求めた圧力で速度を修正し, n+1段階の速度を求める.
+    integer(IP),intent(in) :: imx, jmx, kmx
+    real(DP),intent(in) :: ds(3), dv
+    real(DP),intent(in) :: del_t
+    real(DP),intent(in) :: p(:,:,:)
+    real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
+
+    integer(IP) i, j, k
+    !!面の流束を圧力で修正する.
+
+        !面速度 = 面に垂直な流速
     do k = 2, kmx
     do j = 2, jmx
     do i = 1, imx
@@ -529,6 +552,5 @@ subroutine fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v, mi, mj, mk)
     end do
     end do
     end do
-
 end subroutine
 end module fractional_step_m
