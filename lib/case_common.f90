@@ -21,6 +21,8 @@ module case_common_m
     use system_operator_m
     implicit none
 
+    private
+
     type case_common_t
         !/////////////////////////////////////////////////////////////////
         !! version: 1.0.0
@@ -47,6 +49,8 @@ module case_common_m
         procedure,non_overridable :: process_diverged
     end type
 
+    public case_common_t
+
 contains
 
 subroutine phase_pre_process(this, grid, fld)
@@ -72,11 +76,13 @@ subroutine phase_pre_process(this, grid, fld)
     call set_bc_type(this%bc_types, bc_ids, bc_properties, grid%get_extents())
     call fld%init(imx, jmx, kmx, this%settings_case%u_ic, this%settings_case%p_ref)
 
+    call this%add_on_pre_process(grid, fld)
+    
 end subroutine
 
 subroutine add_on_pre_process(this, grid, fld)
     !!追加で初期状態を管理したい場合に呼び出す.
-    class(case_common_t),intent(in) :: this
+    class(case_common_t),intent(inout) :: this
     type(rectilinear_mesh_t),intent(inout) :: grid
     type(fluid_field_t),intent(inout) :: fld
 

@@ -12,6 +12,7 @@ module mesh_m
         contains
         procedure,public :: init => init_mesh
         procedure,public :: get_extents
+        procedure,public :: get_extents_sub
         procedure,public :: calc_geometry
     end type
     
@@ -28,6 +29,17 @@ pure function get_extents(this) result(extents)
     extents(3) = this%kmax
 
 end function
+
+subroutine get_extents_sub(this, imx, jmx, kmx)
+    !!格子点の個数を返す. 
+    class(rectilinear_mesh_t),intent(in) :: this
+    integer(ip),intent(out) :: imx, jmx, kmx
+
+    imx = this%imax
+    jmx = this%jmax
+    kmx = this%kmax
+
+end subroutine
 
 subroutine init_mesh(this, imx, jmx, kmx, lengths)
     !!等間隔直交格子メッシュを生成し初期化する.

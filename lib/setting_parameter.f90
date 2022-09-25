@@ -109,7 +109,7 @@ subroutine create_sample_()
     integer(ip) unit
     integer(ip) l
     character(8) :: label_(6) = ["i = 1   ", "i = imax", "j = 1   ", "j = jmax", "k = 1   ", "k = kmax"] 
-    logical :: dummy_flag = .false.
+    character(*),parameter :: dummy_flag = "T"
     open(newunit = unit, file = "config_sample.txt", status = "replace")
         write(unit, "(3(i0,1x), ' !grid points (imax,jmax,kmax)')") 21, 21, 21
         write(unit, "(3(g0.3,1x), ' !length (x,y,z)     ')") 10.0d0, 4.0d0, 2.0d0 
@@ -125,9 +125,8 @@ subroutine create_sample_()
         do l = 1, 6
             write(unit, "(i0,1x,4(g0.2,1x),' !B.C. for ',A)") 1, 0.0d0, 0.0d0, 0.0d0, 1.0d0, label_(l)//" face. [bc_id, u, v, w, p]"
         end do
-        write(unit, "(A         , ' !convection term. ""ud"": 1st order upwind, ""cd"": central diff')")
-        write(unit, "(i0         , '!diffusion  term.   1 : compact stencil ,   2 : large stencil')")
-        write(unit, "('!large stencil is same here as cell face gradients')")
+        write(unit, "(A         , ' !convection term. ""ud"": 1st order upwind, ""cd"": central diff')") "ud"
+        write(unit, "(i0        , ' !diffusion  term.   1 : compact stencil ,   2 : large stencil')") 1
         write(unit, "(A         , ' ![T/F] if T, face fluxes are corrected by pressure.')") dummy_flag
         write(unit,"(A)") "!**Boundary Condition**"
         write(unit,"(A,1x,i0)") "! Inlet          ", bc_inlet
