@@ -106,13 +106,6 @@ subroutine boundary_condition_velocity(extents, v, bc_type)
     imx = extents(1)
     jmx = extents(2)
     kmx = extents(3)
-    block
-        character(1) :: label_(6) = ["i","i","j","j","k","k"]
-        do l = 1, 6
-            print "(A,' = ',i0, ' :: type = ',i0, ' (neighbor_index = ', i0, ' )')", &
-            label_(l) ,bc_type(l)%index, bc_type(l)%type, bc_type(l)%neighbor_index
-        end do
-    end block
     
     !i-dir.
     do m = 1, 2

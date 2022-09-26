@@ -75,7 +75,7 @@ end function
 
 subroutine set_current_step(this, current_step)
     !!現在の計算ステップを記録する.
-    class(case_common_t),intent(out) :: this
+    class(case_common_t),intent(inout) :: this
     integer(ip),intent(in) :: current_step
 
     this%current_step_ = current_step

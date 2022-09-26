@@ -89,7 +89,7 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
         !!@note 初期状態から計算の場合は, ループ開始前に速度の初期値で更新しておく必要がある.
     real(dp),intent(in) :: dudr(:,:,:,:,:)
         !!速度勾配テンソル.
-    type(bc_t),intent(in) :: bc_types(6)
+    type(bc_t),intent(in) :: bc_types(:)
     
     integer(ip) imx, jmx, kmx, i, j, k
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:), rei
