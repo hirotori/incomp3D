@@ -8,7 +8,7 @@ SRC := ./src/case_poiseuille.f90\
 ./src/fs3duns.f90
 
 # ビルドされる実行プログラムの名称.
-TARGET = fs3duns
+TARGET = fs3duns_pois
 
 #コンパイラ
 FC := gfortran
