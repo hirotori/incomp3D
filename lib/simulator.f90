@@ -60,6 +60,7 @@ subroutine run(this, current_case, solver)
         print "(A)", time_bar
         print "('nstep = ',i0, ', time = ',g0)", nstep, real(nstep,dp)*current_case%settings_case%dt
         print "(A)", time_bar
+        call current_case%set_current_step(nstep)
 
         !どのアルゴリズムでも共通して計算させる.
         call calc_gradient_tensor(extents, grid%dv, grid%ds, grid%dx, fluid%velocity, fluid%dudr)

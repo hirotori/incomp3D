@@ -17,7 +17,7 @@ module case_common_m
     use setting_parameter_m
     use boundary_condition_m, only : bc_t, set_bc_type
     use vtk_field_data_m
-    use vtk_structured_points_writer_m
+    use output_m
     use system_operator_m
     implicit none
 
@@ -40,7 +40,11 @@ module case_common_m
             !!各境界面の境界条件および境界値（速度, 圧力）を扱う.
         character(:),allocatable,private :: outdir_
             !!出力ディレクトリ.
+        integer(ip),private :: current_step_ = 0
         contains
+        procedure,non_overridable :: get_current_step
+        procedure,non_overridable :: get_current_time
+        procedure,non_overridable :: set_current_step
         procedure,non_overridable :: phase_pre_process
         procedure :: add_on_pre_process
         procedure :: phase_post_process
@@ -52,6 +56,31 @@ module case_common_m
     public case_common_t
 
 contains
+
+pure integer(ip) function get_current_step(this)
+    !!現在の計算ステップを取得する.
+    class(case_common_t),intent(in) :: this
+
+    get_current_step = this%current_step_
+
+end function
+
+pure real(dp) function get_current_time(this)
+    !!現在の計算ステップを取得する.
+    class(case_common_t),intent(in) :: this
+
+    get_current_time = this%current_step_*this%settings_case%dt
+
+end function
+
+subroutine set_current_step(this, current_step)
+    !!現在の計算ステップを記録する.
+    class(case_common_t),intent(out) :: this
+    integer(ip),intent(in) :: current_step
+
+    this%current_step_ = current_step
+
+end subroutine
 
 subroutine phase_pre_process(this, grid, fld)
     !!計算開始前の処理を行う. 
@@ -122,11 +151,7 @@ subroutine writeout_(grid, fld, basename, current_step)
     character(*),intent(in) :: basename
     integer(ip),intent(in) :: current_step
 
-    type(vtk_structured_points_t) writer
     type(attrib_data_holder_t),allocatable :: holders(:)
-    character(:),allocatable :: fname
-
-    fname = get_filename_with_digit_(basename, current_step, ".vtk")
 
     allocate(holders(2))
     
@@ -135,24 +160,7 @@ subroutine writeout_(grid, fld, basename, current_step)
     holders(2)%name = "Pressure"
     call holders(2)%register_scalar(fld%pressure, [2,2,2], grid%get_extents())
 
-    call writer%init(grid%get_extents(), [real(dp) :: 0, 0, 0], grid%dx)
-    call writer%writeout(fname, holder=holders)
-    
-    contains
-
-    function get_filename_with_digit_(filename_no_ext, digit, ext) result(filename_)
-        implicit none
-        character(*),intent(in) :: filename_no_ext
-        integer,intent(in) :: digit
-        character(*),intent(in) :: ext
-        character(:),allocatable :: filename_
-  
-        character(32) digit_with_ext
-  
-        write(digit_with_ext, "(i0,A)") digit, ext
-        filename_ = trim(filename_no_ext) // trim(digit_with_ext)
-  
-    end function
+    call writeout_single_vtk_str_points(basename, current_step, grid%get_extents(), [real(dp) :: 0, 0, 0], grid%dx, holders)
     
 end subroutine
 

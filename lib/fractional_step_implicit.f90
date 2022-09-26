@@ -68,7 +68,7 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
         !!面に垂直な流速成分.
     real(dp),intent(in) :: dudr(:,:,:,:,:)
         !!速度勾配テンソル.
-    type(bc_t),intent(in) :: bc_types(:)
+    type(bc_t),intent(in) :: bc_types(6)
     
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:)
     integer(ip) i, j, k
@@ -102,7 +102,7 @@ subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
     class(solver_fs_imp_t),intent(inout) :: this
     integer(ip),intent(in) :: extents(3)
     real(dp),intent(inout) :: v(:,:,:,:)
-    type(bc_t),intent(in) :: bc_types(:)
+    type(bc_t),intent(in) :: bc_types(6)
 
     integer(ip) i, j, k, l
     integer(ip) iter
@@ -136,6 +136,7 @@ subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
         end do        
         end do
     
+        !@bug  境界条件構造体がなぜか初期化されている. simulatorで境界条件適用時は問題ない.
         call boundary_condition_velocity(extents, v, bc_types)
 
         resid_ = 0.0_dp

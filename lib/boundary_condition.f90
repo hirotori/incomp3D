@@ -12,11 +12,11 @@ module boundary_condition_m
     integer(ip),parameter :: bc_periodic_buffer = 7
     
     type bc_t
-        integer(ip) type
+        integer(ip) :: type = -99
         real(dp) v_bc(3)
         real(dp) p_bc
-        integer(ip) index
-        integer(ip) neighbor_index
+        integer(ip) :: index = -999
+        integer(ip) :: neighbor_index = -999
     end type
 
     public :: bc_t, &
@@ -106,6 +106,13 @@ subroutine boundary_condition_velocity(extents, v, bc_type)
     imx = extents(1)
     jmx = extents(2)
     kmx = extents(3)
+    block
+        character(1) :: label_(6) = ["i","i","j","j","k","k"]
+        do l = 1, 6
+            print "(A,' = ',i0, ' :: type = ',i0, ' (neighbor_index = ', i0, ' )')", &
+            label_(l) ,bc_type(l)%index, bc_type(l)%type, bc_type(l)%neighbor_index
+        end do
+    end block
     
     !i-dir.
     do m = 1, 2
@@ -126,6 +133,7 @@ subroutine boundary_condition_velocity(extents, v, bc_type)
             error stop "Sorry, Not Implemented."
 
         case default
+            print "('bc(u,i) = ', i0, ', m = ', i0)", bc_type(m)%type, m
             error stop "Invalid BC type."
         end select    
 
@@ -148,8 +156,8 @@ subroutine boundary_condition_velocity(extents, v, bc_type)
     
         case (bc_outlet_unsteady)
             error stop "Sorry, Not Implemented."
-
         case default
+            print "('bc(u,j) = ', i0, ', m = ', i0)", bc_type(m)%type, m
             error stop "Invalid BC type."
         end select    
 
@@ -173,6 +181,7 @@ subroutine boundary_condition_velocity(extents, v, bc_type)
             error stop "Sorry, Not Implemented."
 
         case default
+            print "('bc(u,k) = ', i0, ', m = ', i0)", bc_type(m)%type, m
             error stop "Invalid BC type."
         end select    
 
@@ -217,6 +226,7 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
             error stop "Sorry, Not Implemented."
 
         case default
+            print "('bc(p,i) = ', i0)", bc_type(m)%type
             error stop "Invalid BC type."
         end select    
 
@@ -245,6 +255,7 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
             error stop "Sorry, Not Implemented."
 
         case default
+            print "('bc(p,j) = ', i0)", bc_type(m)%type
             error stop "Invalid BC type."
         end select    
 
@@ -272,6 +283,7 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
             error stop "Sorry, Not Implemented."
 
         case default
+            print "('bc(p,k) = ', i0)", bc_type(m)%type
             error stop "Invalid BC type."
         end select    
 
