@@ -7,11 +7,11 @@ program fs3duns
     !! - あらかじめ用意されたケースクラス, シミュレータ, アルゴリズムにより
     !!   解析を行うサンプルプログラム. 
     !/////////////////////////////////////////////////////////////////
-    use case_common_m
+    use case_cavity_m
     use fractional_step_implicit_m
     use simulator_m
 
-    type(case_common_t) :: current_case
+    type(case_cavity_t) :: current_case
     type(simulator_t) :: simulator
     type(solver_fs_imp_t) :: solver
     call simulator%run(current_case, solver)
