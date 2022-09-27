@@ -3,6 +3,7 @@ module case_poiseuille_m
     use case_common_m
     use mesh_m
     use fluid_field_m
+    use IO_operator_m
     implicit none
 
     type, extends(case_common_t),public :: case_poiseuille_t
@@ -53,7 +54,7 @@ subroutine phase_post_process(this, grid, fld)
 
     real(dp) resid_, den_
     integer(ip) i, j, k, imx, jmx, kmx
-    real(dp) y_
+    integer(ip) unit
 
     !!厳密解との誤差ノルムの計算.
     call grid%get_extents_sub(imx, jmx, kmx)
@@ -73,6 +74,11 @@ subroutine phase_post_process(this, grid, fld)
     resid_ = resid_/den_
 
     print "('L2-norm (velocity - exact) = ',g0)", resid_
+
+    !!l2-normはファイルにストレージされる.
+    if ( open_text_file(unit, "result.txt", "# time, l2-err") ) then
+        write(unit,"(*(g0,1x))") this%get_current_time(), resid_
+    end if
 
 end subroutine
     
