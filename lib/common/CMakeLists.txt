@@ -1,6 +1,7 @@
 add_library(incomp3d_util STATIC
  command_line_args.f90
  floating_point_parameter.f90
+ IO_operator.f90
  linear_algebra.f90
  system_operator.f90
  time_monitor.f90
