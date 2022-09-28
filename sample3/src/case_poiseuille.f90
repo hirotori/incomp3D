@@ -71,7 +71,7 @@ subroutine phase_post_process(this, grid, fld)
     end do        
     end do
 
-    resid_ = resid_/den_
+    resid_ = sqrt(resid_/den_)
 
     print "('L2-norm (velocity - exact) = ',g0)", resid_
 
