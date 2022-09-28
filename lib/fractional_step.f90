@@ -122,11 +122,11 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
 
 end subroutine
 
-subroutine calc_corrected_velocity(this, extents, ds, dv, del_t, mi, mj, mk, p, v,setting, p_ic, bc_types, diverged)
+subroutine calc_corrected_velocity(this, extents, ds, dv, dx, del_t, mi, mj, mk, p, v,setting, p_ic, bc_types, diverged)
     !!圧力Poisson方程式を解いて速度とフラックスを修正する.
     class(solver_fs),intent(in) :: this
     integer(IP),intent(in) :: extents(3)
-    real(DP),intent(in) :: ds(3), dv
+    real(DP),intent(in) :: ds(3), dv, dx(3)
     real(DP),intent(in) :: del_t
     real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
     real(DP),intent(inout) :: p(:,:,:)
@@ -144,8 +144,8 @@ subroutine calc_corrected_velocity(this, extents, ds, dv, del_t, mi, mj, mk, p, 
 
     call cal_face_velocity(imx, jmx, kmx, v, mi, mj, mk)
 
-    call fs_poisson_v2(imx, jmx, kmx, ds, dv, del_t, this%coeffs_p, mi, mj, mk, p, &
-                       setting, p_ic, bc_types, boundary_condition_pressure, diverged)
+    call fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, this%coeffs_p, mi, mj, mk, p, &
+                       setting, p_ic, bc_types, diverged)
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
 
@@ -374,11 +374,11 @@ subroutine set_matrix_p(coeffs, ds, dv)!, imx, jmx, kmx)
 
 end subroutine
 
-subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, del_t, coeffs, mi, mj, mk, p, setting, p_ic, bc_types, bc_proc, diverged)
+subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p, setting, p_ic, bc_types, diverged)
     !!gauss-seidel法により圧力を求める.
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     integer(IP),intent(in) :: imx, jmx, kmx
-    real(DP),intent(in) :: ds(3), dv
+    real(DP),intent(in) :: ds(3), dv, dx(3)
     real(DP),intent(in) :: del_t
     type(mat_a),intent(in) :: coeffs
     real(DP),intent(in) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
@@ -387,15 +387,6 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, del_t, coeffs, mi, mj, mk, p, se
     real(DP),intent(in) :: p_ic
     type(bc_t),intent(in) :: bc_types(6)
     logical,intent(out) :: diverged
-    interface 
-        subroutine bc_proc(extents, p_, bc_types_)
-            import ip, dp, bc_t
-            !!圧力境界条件の適用. ここでは仮想セルに値を入れる.
-            integer(IP),intent(in) :: extents(3)
-            real(DP),intent(inout) :: p_(:,:,:)
-            type(bc_t),intent(in) :: bc_types_(6)
-        end subroutine
-    end interface
 
     integer(IP) itr
     real(DP) resid_, den_
@@ -446,7 +437,7 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, del_t, coeffs, mi, mj, mk, p, se
         end do
         end do
 
-        call bc_proc(extents_, p, bc_types) !仮想セルの圧力を更新する.
+        call boundary_condition_pressure(extents_, p, dx, bc_types) !仮想セルの圧力を更新する.
 
         !収束判定.
         resid_ = 0.0_dp

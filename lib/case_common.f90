@@ -93,7 +93,7 @@ subroutine phase_pre_process(this, grid, fld)
 
     integer(ip) imx, jmx, kmx
     real(dp) lengths(3)
-    integer(ip) :: bc_ids(6)
+    integer(ip) :: bc_ids(2,6)
     real(dp) :: bc_properties(4,6)
     
     this%config_file = "config.txt"

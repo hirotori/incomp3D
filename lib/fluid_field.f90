@@ -172,4 +172,50 @@ subroutine calc_gradient_tensor(extents, dv, ds, dx, velocity, dudr)
 
 
 end subroutine
+
+subroutine calculate_vorticity(vorticity, dudr)
+    !!現時点での流れ場の渦度を計算する. 
+    !!渦度はセル中心の値として評価される. 
+    real(dp),intent(inout) :: vorticity(:,2:,2:,2:)
+        !!渦度.
+    real(dp),intent(in) :: dudr(:,:,:,:,:)
+        !!速度勾配テンソル
+
+    integer(ip) i, j, k
+
+    do k = 2, ubound(vorticity, dim = 4)
+    do j = 2, ubound(vorticity, dim = 3)
+    do i = 2, ubound(vorticity, dim = 2)
+        vorticity(1,i,j,k) = dudr(2,3,i,j,k) - dudr(3,2,i,j,k)
+        vorticity(2,i,j,k) = dudr(3,1,i,j,k) - dudr(1,3,i,j,k)
+        vorticity(3,i,j,k) = dudr(1,2,i,j,k) - dudr(2,1,i,j,k)
+    end do
+    end do
+    end do
+
+
+end subroutine
+
+subroutine calculate_q2_criterion(Q_2, dudr)
+    !!現時点での流れ場のQ値(速度勾配テンソルの第2不変量)を計算する. 
+    !!セル中心の値として評価される. 
+    real(dp),intent(inout) :: Q_2(2:,2:,2:)
+        !!Q値.
+    real(dp),intent(in) :: dudr(:,:,:,:,:)
+        !!速度勾配テンソル
+
+    integer(ip) i, j, k
+    real(dp) D(3,3)
+
+    do k = 2, ubound(Q_2, dim = 3)
+    do j = 2, ubound(Q_2, dim = 2)
+    do i = 2, ubound(Q_2, dim = 1)
+       D(:,:) = dudr(:,:,i,j,k)
+       Q_2(i,j,k) = -0.5_dp*(D(1,1)*D(1,1) + D(2,2)*D(2,2) + D(3,3)*D(3,3)) - (D(1,2)*D(2,1) + D(1,3)*D(3,1) + D(2,3)*D(3,2))
+    end do
+    end do
+    end do
+
+    
+end subroutine
 end module fluid_field_m

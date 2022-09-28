@@ -88,19 +88,20 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
     end do        
     end do
 
-    call calc_pseudo_velocity_common_core(this, extents, v, bc_types)
+    call calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
 
     !@TODO 発散した後の処理. 
 
 
 end subroutine
 
-subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
+subroutine calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
     !!時間陰解法に共通の処理. 連立方程式を解いて新しい中間速度を求める.
     !!係数行列と右辺は外部で計算されている前提.
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     class(solver_fs_imp_t),intent(inout) :: this
     integer(ip),intent(in) :: extents(3)
+    real(dp),intent(in) :: dx(3)
     real(dp),intent(inout) :: v(:,:,:,:)
     type(bc_t),intent(in) :: bc_types(:)
 
@@ -136,7 +137,7 @@ subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
         end do        
         end do
     
-        call boundary_condition_velocity(extents, v, bc_types)
+        call boundary_condition_velocity(extents, v, dx, bc_types)
 
         resid_ = 0.0_dp
         den_ = 0.0_dp

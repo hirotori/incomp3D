@@ -1,10 +1,11 @@
 module setting_parameter_m
     ! use,intrinsic :: iso_fortran_env, only : IP => int32, DP => real64
     use floating_point_parameter_m
-    use boundary_condition_m, only : bc_inlet, bc_outlet, bc_wall, bc_slip, &
-                                     bc_periodic, bc_outlet_unsteady, bc_periodic_buffer
+    use boundary_condition_m, only : bc_fix_grad, bc_fix_val, bc_outlet_unsteady, bc_periodic, bc_periodic_buffer
     implicit none
     private
+
+    character(*),parameter :: current_file_version = "1.1"
     type slv_setting
         !!poisson方程式のソルバ設定.
         real(DP) tolerance
@@ -36,7 +37,8 @@ subroutine read_config(fname, imx, jmx, kmx, l_xyz, c_setting, s_setting, bc_ids
     real(DP),intent(out) :: l_xyz(3)
     type(case_setting),intent(out) :: c_setting
     type(slv_setting),intent(out) :: s_setting
-    integer(ip),intent(out) :: bc_ids(6)
+    integer(ip),intent(out) :: bc_ids(2,6)
+        !!速度/圧力境界条件. 速度, 圧力の順番.
     real(dp),intent(out) :: bc_properties(4,6)
 
 
@@ -55,7 +57,7 @@ subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_
     real(DP),intent(out) :: l_xyz(3)
     type(case_setting),intent(out) :: setting_c
     type(slv_setting),intent(out) :: setting
-    integer(ip),intent(out) :: bc_ids(6)
+    integer(ip),intent(out) :: bc_ids(2,6)
     real(dp),intent(out) :: bc_properties(4,6)
 
     integer(IP) unit, iost, l
@@ -67,6 +69,18 @@ subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_
         error stop trim(tmp_)
     end if
 
+    read(unit,*,err=99) tmp_
+    !version判定.
+    block
+        character(:),allocatable :: ver_
+        integer(ip) mj, mn
+        ver_ = trim(adjustl(tmp_))
+        if ( ver_ /= current_file_version ) then
+            print "(A,A,A,A)", &
+            "config file version wrong. ver.",current_file_version, " recquired, but current file is ", ver_
+            error stop
+        end if
+    end block
     read(unit,*,err=99) imx, jmx, kmx 
     read(unit,*,err=99) l_xyz(:)      
     read(unit,*,err=99) setting_c%nstart, setting_c%nend, setting_c%nwrite
@@ -79,7 +93,7 @@ subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_
     read(unit,*,err=99) setting%tolerance
     read(unit,*,err=99) setting%relax_coeff
     do l = 1, 6
-        read(unit,*,err=99) bc_ids(l), bc_properties(:,l)        
+        read(unit,*,err=99) bc_ids(:,l), bc_properties(:,l)        
     end do
     read(unit,*,err=99) tmp_ ; setting%conv_type = trim(adjustl(tmp_))
     read(unit,*,err=99) setting%diff_type
@@ -100,7 +114,8 @@ subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_
 99 continue
 
     print "('ERROR OCCURED IN READ_CONFIG')"
-
+    call create_sample_()
+    print "('Please check sample file.')"
     error stop
 
 end subroutine
@@ -111,6 +126,7 @@ subroutine create_sample_()
     character(8) :: label_(6) = ["i = 1   ", "i = imax", "j = 1   ", "j = jmax", "k = 1   ", "k = kmax"] 
     character(*),parameter :: dummy_flag = "T"
     open(newunit = unit, file = "config_sample.txt", status = "replace")
+        write(unit, "(A, 3x, '! current config file version.')") current_file_version
         write(unit, "(3(i0,1x), ' !grid points (imax,jmax,kmax)')") 21, 21, 21
         write(unit, "(3(g0.3,1x), ' !length (x,y,z)     ')") 10.0d0, 4.0d0, 2.0d0 
         write(unit, "(3(i0,1x), ' !time step (start,end,write_interval')") 0, 1000, 100 
@@ -123,18 +139,17 @@ subroutine create_sample_()
         write(unit, "(g0.2      , ' !tolerance for poisson eq.')") 0.0001d0
         write(unit, "(g0.2      , ' !accel. coefficient for poisson eq.')") 1.3d0
         do l = 1, 6
-            write(unit, "(i0,1x,4(g0.2,1x),' !B.C. for ',A)") 1, 0.0d0, 0.0d0, 0.0d0, 1.0d0, label_(l)//" face. [bc_id, u, v, w, p]"
+            write(unit, "(2(i0,1x),4(g0.2,1x),' !B.C. for ',A)") 1, 1, 0.0d0, 0.0d0, 0.0d0, 1.0d0, &
+                                                label_(l)//" face. [bc_u, bc_p, u, v, w, p]"
         end do
         write(unit, "(A         , ' !convection term. ""ud"": 1st order upwind, ""cd"": central diff')") "ud"
         write(unit, "(i0        , ' !diffusion  term.   1 : compact stencil ,   2 : large stencil')") 1
         write(unit, "(A         , ' ![T/F] if T, face fluxes are corrected by pressure.')") dummy_flag
         write(unit,"(A)") "!**Boundary Condition**"
-        write(unit,"(A,1x,i0)") "! Inlet          ", bc_inlet
-        write(unit,"(A,1x,i0)") "! Outlet         ", bc_outlet
-        write(unit,"(A,1x,i0)") "! Wall           ", bc_wall
-        write(unit,"(A,1x,i0)") "! Slip           ", bc_slip
-        write(unit,"(A,1x,i0)") "! Periodic       ", bc_periodic
-        write(unit,"(A,1x,i0)") "! Outlet unsteady ", bc_outlet_unsteady
+        write(unit,"(A,1x,i0)") "! Fix value            ", bc_fix_val
+        write(unit,"(A,1x,i0)") "! Fix gradient         ", bc_fix_grad
+        write(unit,"(A,1x,i0)") "! Periodic             ", bc_periodic
+        write(unit,"(A,1x,i0)") "! Outlet unsteady      ", bc_outlet_unsteady
         write(unit,"(A,1x,i0)") "! Periodic with buffer ", bc_periodic_buffer
         write(unit,"(A)") "!bc velocity(u,v,or w) interplated as a pair cell index. "
 

@@ -42,8 +42,8 @@ subroutine run(this, current_case, solver)
     !ループ前の処理
     call current_case%phase_pre_process(grid, fluid)
     extents(:) = grid%get_extents()
-    call boundary_condition_velocity(extents, fluid%velocity, current_case%bc_types)
-    call boundary_condition_pressure(extents, fluid%pressure, current_case%bc_types)
+    call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
+    call boundary_condition_pressure(extents, fluid%pressure, grid%dx, current_case%bc_types)
 
     !陰解法のため, ループ前の初期値で面流束を求める. 初期値は連続の式を満たすと仮定して, 
     !線形補間だけ行う. 厳密な圧力場が分かっていればその直後に補正をかけても良いが, だいたい一様初期値なので意味が無いとして保留.
@@ -71,14 +71,14 @@ subroutine run(this, current_case, solver)
                                             fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%dudr, &
                                             current_case%bc_types)
 
-        call boundary_condition_velocity(extents, fluid%velocity, current_case%bc_types)
+        call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
 
-        call solver%calc_corrected_velocity(extents, grid%ds, grid%dv, dt, &
+        call solver%calc_corrected_velocity(extents, grid%ds, grid%dv, grid%dx, dt, &
                                            fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%pressure, fluid%velocity, &
                                            current_case%settings_solver, current_case%settings_case%p_ref, current_case%bc_types, &
                                            sim_diverged)
 
-        call boundary_condition_velocity(extents, fluid%velocity, current_case%bc_types)
+        call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
 
         this%v_old(:,:,:,:) = fluid%velocity(:,:,:,:)
 
