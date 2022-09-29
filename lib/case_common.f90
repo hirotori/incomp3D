@@ -45,6 +45,8 @@ module case_common_m
         procedure,non_overridable :: get_current_step
         procedure,non_overridable :: get_current_time
         procedure,non_overridable :: set_current_step
+        procedure,non_overridable :: set_output_directory
+        procedure,non_overridable :: get_current_output_directory
         procedure,non_overridable :: phase_pre_process
         procedure :: add_on_pre_process
         procedure :: phase_post_process
@@ -70,6 +72,26 @@ pure real(dp) function get_current_time(this)
     class(case_common_t),intent(in) :: this
 
     get_current_time = this%current_step_*this%settings_case%dt
+
+end function
+
+subroutine set_output_directory(this, path)
+    !!出力ディレクトリを指定する.
+    class(case_common_t),intent(inout) :: this
+    character(*),intent(in) :: path
+        !!計算結果ファイルを出力するディレクトリのパス.
+
+    this%outdir_ = path
+
+
+end subroutine
+
+function get_current_output_directory(this) result(path)
+    !!現在の出力先ディレクトリを返す.
+    class(case_common_t),intent(in) :: this
+    character(:),allocatable :: path
+
+    path = this%outdir_
 
 end function
 
@@ -120,7 +142,7 @@ end subroutine
 
 subroutine phase_post_process(this, grid, fld)
     !!現時間段階の計算が終わった後に呼び出される. 
-    class(case_common_t),intent(in) :: this
+    class(case_common_t),intent(inout) :: this
     type(rectilinear_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
 

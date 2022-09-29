@@ -48,7 +48,7 @@ end subroutine
 
 subroutine phase_post_process(this, grid, fld)
     !!現時間段階の計算が終わった後に呼び出される. 
-    class(case_poiseuille_t),intent(in) :: this
+    class(case_poiseuille_t),intent(inout) :: this
     type(rectilinear_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
 
