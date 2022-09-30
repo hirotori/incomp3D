@@ -142,7 +142,7 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
                 v(:,i,2:jmx,2:kmx) = dx(1)*bc_type(m)%v_bc(l) + v(:,inb,2:jmx,2:kmx)              
             end do
             
-        case (bc_periodic)
+        case (bc_periodic, bc_periodic_buffer)
             
             v(:,i,2:jmx,2:kmx) = v(:,inb,2:jmx,2:kmx)
 
@@ -174,7 +174,7 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
                 v(l,2:imx,j,2:kmx) = dx(2)*bc_type(m)%v_bc(l) + v(l,2:imx,jnb,2:kmx)
             end do
 
-        case (bc_periodic)
+        case (bc_periodic, bc_periodic_buffer)
             
             v(:,2:imx,jnb,2:kmx) = v(:,2:imx,jnb,2:kmx)
     
@@ -204,7 +204,7 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
                 v(l,2:imx,2:jmx,k) = dx(3)*bc_type(m)%v_bc(l) + v(l,2:imx,2:jmx,knb)
             end do
 
-        case (bc_periodic)
+        case (bc_periodic, bc_periodic_buffer)
             
             v(:,2:imx,2:jmx,k) = v(:,2:imx,2:jmx,knb)
     
