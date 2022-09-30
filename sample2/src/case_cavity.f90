@@ -15,6 +15,9 @@ module case_cavity_m
     
     character(*),parameter :: dir_ = "cavity_result"
         !!計算結果とは別のファイルの出力先ディレクトリ.
+    integer(ip),parameter,private :: nwrite_uv = 1000
+        !!データ比較用のファイルを出力する間隔. 
+        !!@note 定常流れを非定常アルゴリズムで解くので, 逐一確認しながら計算を進めた方が好ましい.
 
 contains
 subroutine add_on_pre_process(this, grid, fld)
@@ -59,7 +62,7 @@ subroutine phase_post_process(this, grid, fld)
     x_gc = (2 + extents(1))/2
     y_gc = (2 + extents(2))/2
 
-    if ( mod(nstep,100) == 0 ) then
+    if ( mod(nstep,nwrite_uv) == 0 ) then
         fname = get_filename_with_digit_("cavity_u",nstep,".txt")
         open(newunit=unit, file=dir_//'/'//fname, status="replace")
             write(unit,"(A)") "y u"

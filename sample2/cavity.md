@@ -6,7 +6,7 @@
 
 解析に要する時間は, config.txtのままでノートPC(intel i7 (8th gen), 8GB)で計算したところ1分程度でした.
 
-計算結果に関しては, Ghiaらの論文[1]を参照する.
+計算結果に関しては, Ghiaらの論文[1]を参照する. 比較用のデータとグラフ描画スクリプト(Python)を同梱している. 
 
 ## 参考文献
 1.  Ghia U, Ghia KN, Shin CT (1982) High-Re solutions for incompressible flow using the Navier-Stokes equations and a multigrid method. Journal of Computational Physics 48:387–411. https://doi.org/10.1016/0021-9991(82)90058-4
