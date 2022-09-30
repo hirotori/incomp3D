@@ -15,7 +15,7 @@ module fractional_step_implicit_m
         type(mat_a) :: matrix_v
         real(dp),allocatable :: rhs_(:,:,:,:)
         integer(ip) :: iter_max = 1000
-        real(dp) :: tolerance = 0.001_dp
+        real(dp) :: tolerance = 1.0d-16
         real(dp) :: alpha = 1.0_dp
         contains
         procedure :: init => init_solver_2
@@ -41,6 +41,10 @@ subroutine init_solver_2(this, fld, grd, settings_slv, setting_case)
     
     call set_matrix_(this%matrix_v, grd%ds, grd%dv, grd%dx, setting_case%reynolds_number, setting_case%dt, this%diffus_type)
     allocate(this%rhs_(1:3,2:mx(1),2:mx(2),2:mx(3)))
+
+    print "('   - velocity linear solver : SOR')"
+    print "('   - tolerance              : ', g0)", this%tolerance
+    print "('   - accelaration           : ', g0)", this%alpha
 
 end subroutine
 
@@ -133,6 +137,11 @@ subroutine calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
                                  - this%matrix_v%aw*v(l,i-1,j  ,k  ) - this%matrix_v%ae*v(l,i+1,j  ,k  ) &
                                  - this%matrix_v%as*v(l,i  ,j-1,k  ) - this%matrix_v%an*v(l,i  ,j+1,k  ) &
                                  - this%matrix_v%ab*v(l,i  ,j  ,k-1) - this%matrix_v%at*v(l,i  ,j  ,k+1))/this%matrix_v%ap
+            ! point jacobi
+            ! v(l,i,j,k) = (this%rhs_(l,i,j,k) &
+            ! - this%matrix_v%aw*v_tmp(l,i-1,j  ,k  ) - this%matrix_v%ae*v_tmp(l,i+1,j  ,k  ) &
+            ! - this%matrix_v%as*v_tmp(l,i  ,j-1,k  ) - this%matrix_v%an*v_tmp(l,i  ,j+1,k  ) &
+            ! - this%matrix_v%ab*v_tmp(l,i  ,j  ,k-1) - this%matrix_v%at*v_tmp(l,i  ,j  ,k+1))/this%matrix_v%ap
         end do
         end do        
         end do
@@ -213,87 +222,5 @@ subroutine set_matrix_(mat, ds, dv, dx, re, dt, stencil_type)
 
 
 end subroutine
-
-! subroutine sor(extents, A, x, b, bc_types, tolerance, max_iter, accl, diverged)
-!     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
-!     !!SOR法. 速度成分をそれぞれループにかけて解く.
-!     integer(ip),intent(in) :: extents(3)
-!     type(mat_a),intent(in) :: A
-!     real(dp),intent(inout) :: x(:,:,:)
-!     real(dp),intent(in) :: b(:,:,:)
-!     type(bc_t),intent(in) :: bc_types(:)
-!     real(dp),intent(in) :: tolerance
-!     integer(ip),intent(in) :: max_iter
-!     real(dp),intent(in) :: accl
-!     logical,intent(out) :: diverged
-
-!     integer(ip) iter, i, j, k, imx, jmx, kmx, icmx
-!     real(dp) den_, resid_
-!     real(dp),allocatable :: x_tmp(:,:,:,:)
-    
-!     imx = extents(1)
-!     jmx = extents(2)
-!     kmx = extents(3)
-!     icmx = product(extents(:) - 1)
-
-!     allocate(x_tmp, mold = x)
-!     x_tmp(:,:,:,:) = 0.0_dp
-
-!     do iter = 1, max_iter
-!         do k = 2, kmx
-!         do j = 2, jmx
-!         do i = 2, imx
-!             x(i,j,k) = (1.0_dp - accl)*x(i,j,k) &
-!                                  + accl*(b(i,j,k) &
-!                                  - A%aw*x(i-1,j  ,k  ) - A%ae*x(i+1,j  ,k  ) &
-!                                  - A%as*x(i  ,j-1,k  ) - A%an*x(i  ,j+1,k  ) &
-!                                  - A%ab*x(i  ,j  ,k-1) - A%at*x(i  ,j  ,k+1))/A%ap
-!         end do
-!         end do        
-!         end do
-    
-!         call boundary_condition_velocity(extents, v, bc_types)
-
-!         resid_ = 0.0_dp
-!         den_ = 0.0_dp
-!         do k = 2, kmx
-!         do j = 2, jmx
-!         do i = 2, imx
-!             resid_ = resid_ + norm2(v(:,i,j,k) - v_tmp(:,i,j,k))**2.0_dp
-!             den_ = den_ + norm2(v(:,i,j,k))**2.0_dp
-!         end do
-!         end do
-!         end do
-
-!         resid_ = sqrt(resid_/icmx)/sqrt(den_/icmx)
-
-!         if ( resid_ <= this%tolerance .or. iter >= this%iter_max) then
-!             print "('velocity(',i0,') converged, resid = ',g0)", iter, resid_
-!             ! print "('exit.')"
-!             exit
-!         end if
-        
-!         if ( resid_ > huge(0.0_dp)) then
-!             print "(A)", "velocity diverged."
-!             ! diverged = .true.
-!             return
-!         end if
-
-!         if ( any(ieee_is_nan(v))) then
-!             print"(A)", "NAN detected in pressure."
-!             ! diverged = .true.
-!             return
-!         end if
-
-!         if ( (iter > 1000 .and. mod(iter,1000) == 0) ) then
-!             print "('velocity(',i0,'), resid = ',g0)", iter, resid_
-!         end if
-        
-!         v_tmp(:,:,:,:) = v(:,:,:,:)
-
-!     end do
-
-! end subroutine
-
 
 end module fractional_step_implicit_m
