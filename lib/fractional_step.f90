@@ -374,6 +374,36 @@ subroutine set_matrix_p(coeffs, ds, dv)!, imx, jmx, kmx)
 
 end subroutine
 
+subroutine calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, dt, source_b)
+    !!圧力Poisson方程式の右辺(中間速度の発散)を計算する.
+    integer(ip),intent(in) :: imx, jmx, kmx
+    real(dp),intent(in) :: ds(3)
+    real(dp),intent(in) :: mi(2:,2:,2:), mj(2:,2:,2:), mk(2:,2:,2:)
+        !!1st stepの後に計算された面の速度. 中間段階速度の面への線形内挿により計算されている.
+    real(dp),intent(in) :: dt
+    real(dp),intent(inout) :: source_b(:,:,:)
+        !!圧力Poisson方程式の右辺.
+
+    integer(ip) i, j, k
+    real(DP) me, mw, mn, ms, mt, mb
+
+    do k = 2, kmx
+    do j = 2, jmx
+    do i = 2, imx
+        me = mi(i  ,j  ,k  )*ds(1)
+        mw = mi(i-1,j  ,k  )*ds(1)
+        mn = mj(i  ,j  ,k  )*ds(2)
+        ms = mj(i  ,j-1,k  )*ds(2)
+        mt = mk(i  ,j  ,k  )*ds(3)
+        mb = mk(i  ,j  ,k-1)*ds(3)
+        !!@note 計算される右辺は, 時間刻みで割られていることに注意. これは係数行列と対応させるため.
+        source_b(i,j,k) = (me - mw + mn - ms + mt - mb)/dt
+    end do
+    end do        
+    end do
+
+end subroutine
+
 subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p, setting, p_ic, bc_types, diverged)
     !!gauss-seidel法により圧力を求める.
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
@@ -432,6 +462,10 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p
             p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(b - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
                                                         - coeffs%as*p(i  ,j-1,k  ) - coeffs%an*p(i  ,j+1,k  ) &
                                                         - coeffs%ab*p(i  ,j  ,k-1) - coeffs%at*p(i  ,j  ,k+1))/coeffs%ap
+            !point jacobi
+            ! p(i,j,k) = (b - coeffs%aw*p0(i-1,j  ,k  ) - coeffs%ae*p0(i+1,j  ,k  ) &
+            !               - coeffs%as*p0(i  ,j-1,k  ) - coeffs%an*p0(i  ,j+1,k  ) &
+            !               - coeffs%ab*p0(i  ,j  ,k-1) - coeffs%at*p0(i  ,j  ,k+1))/coeffs%ap
 
         end do
         end do
