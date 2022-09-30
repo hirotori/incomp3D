@@ -1,5 +1,5 @@
 1.1   ! current config file version.
-33 33 2  !grid points (imax,jmax,kmax)
+32 32 2  !grid points (imax,jmax,kmax)
 1.0 1.00 0.01  !length (x,y,z)     
 0 30000 100  !time step (start,end,write_interval
 0.001 !time spacing
@@ -14,8 +14,8 @@
 1 2 0.0 0.0 0.0 0.0  !B.C. for i = imax face. [bc_u, bc_p, u, v, w, p]
 1 2 0.0 0.0 0.0 0.0  !B.C. for j = 1    face. [bc_u, bc_p, u, v, w, p]
 1 2 1.0 0.0 0.0 0.0  !B.C. for j = jmax face. [bc_u, bc_p, u, v, w, p]
-1 2 0.0 0.0 0.0 0.0  !B.C. for k = 1    face. [bc_u, bc_p, u, v, w, p]
-1 2 0.0 0.0 0.0 0.0  !B.C. for k = kmax face. [bc_u, bc_p, u, v, w, p]
+2 2 0.0 0.0 0.0 0.0  !B.C. for k = 1    face. [bc_u, bc_p, u, v, w, p]
+2 2 0.0 0.0 0.0 0.0  !B.C. for k = kmax face. [bc_u, bc_p, u, v, w, p]
 ud !convection term. "ud": 1st order upwind, "cd": central diff
 1 !diffusion  term.   1 : compact stencil ,   2 : large stencil
 T ![T/F] if T, face fluxes are corrected by pressure.
