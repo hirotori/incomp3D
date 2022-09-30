@@ -14,17 +14,34 @@ module fractional_step_implicit_m
         !!@warning 現状, diffus_type = 2には対応出来ていない. diffus_type = 2を選ぶと恐らく破綻する(整合性がないので).
         type(mat_a) :: matrix_v
         real(dp),allocatable :: rhs_(:,:,:,:)
-        integer(ip) :: iter_max = 1000
-        real(dp) :: tolerance = 1.0d-16
-        real(dp) :: alpha = 1.0_dp
+        integer(ip),private :: iter_max = 1000
+        real(dp),private :: tolerance = 1.0d-16
+        real(dp),private :: alpha = 1.0_dp
         contains
         procedure :: init => init_solver_2
         procedure predict_pseudo_velocity
+        procedure set_parameter
 
     end type
 
     public solver_fs_imp_t, calc_pseudo_velocity_common_core
 contains
+subroutine set_parameter(this, iter_max, tolerance, alpha)
+    !!中間速度を計算する反復法のためのパラメータを設定する.
+    !!解法は現在SOR法を適用している. 
+    class(solver_fs_imp_t),intent(inout) :: this
+    integer(ip),intent(in) :: iter_max
+        !!反復回数上限.
+    real(dp),intent(in) :: tolerance
+        !!反復の閾値.
+    real(dp),intent(in) :: alpha
+        !!SOR法の加速係数.
+
+    this%iter_max = iter_max
+    this%tolerance = tolerance
+    this%alpha = alpha
+end subroutine
+
 subroutine init_solver_2(this, fld, grd, settings_slv, setting_case)
     !!ソルバを初期化する.
     class(solver_fs_imp_t),intent(inout) :: this

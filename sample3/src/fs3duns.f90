@@ -28,6 +28,10 @@ program fs3duns_pois
         allocate(solver_fs :: solver)
     else if ( args(2)%v == "implicit" ) then
         allocate(solver_fs_imp_t :: solver)
+        select type (solver)
+        type is (solver_fs_imp_t)
+            call solver%set_parameter(1000, 1.0d-9, 1.0d0)
+        end select
     else 
         error stop "invalid argument :: "//args(2)%v
     end if
