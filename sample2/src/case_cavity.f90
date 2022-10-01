@@ -33,10 +33,10 @@ subroutine add_on_pre_process(this, grid, fld)
     extents(:) = grid%get_extents()
 
     if ( mod(extents(1)-1, 2) == 0 .or. mod(extents(2)-1, 2) == 0) then
-        error stop "case_cavity :: grid points must be odd numbers."
+        error stop "case_cavity :: grid points must be even numbers."
     end if
 
-    allocate(this%vorticity_(3,2:extents(1),2:extents(2),2:extents(3)))
+    allocate(this%vorticity_(3,extents(1),extents(2),extents(3)))
 
     if ( .not. mkdir(dir_) ) error stop "directory creating error." 
 
