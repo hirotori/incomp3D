@@ -4,7 +4,7 @@ module fractional_step_m
     use fluid_field_m
     use mesh_m
     use setting_parameter_m, only : slv_setting, case_setting
-    use boundary_condition_m, only : bc_t, boundary_condition_pressure
+    use boundary_condition_m, only : bc_t, boundary_condition_pressure, boundary_condition_velocity
     implicit none
     private
     type :: mat_a
@@ -21,8 +21,17 @@ module fractional_step_m
         integer(ip),allocatable :: diffus_type
             !!拡散項の評価方法. 1:通常の中心差分, 2:ステンシルが一つ飛びの中心差分. ハウスコードに対応.
         logical :: correct_face_flux = .true.
+
+        !スレッド並列のため作成. 
+        integer(ip),allocatable,private :: c_red(:,:)
+            !!Poisson方程式をred-black SORで解くための, カラーリング配列.
+            !!mod(i+j+k,2)==0となるもの.
+        integer(ip),allocatable,private :: c_black(:,:)
+            !!Poisson方程式をred-black SORで解くための, カラーリング配列.
+            !!mod(i+j+k,2)/=0となるもの.
         contains
         procedure :: init => init_solver 
+        procedure :: process_before_loop
         procedure :: predict_pseudo_velocity
         procedure calc_corrected_velocity
     end type
@@ -62,7 +71,106 @@ subroutine slvr_init_common(this, fld, grd, settings_slv, setting_case)
     print "('      - SOR linear solver for Poisson           ')"
     print "('   -----------------------------------------    ')"
 
+    !OpenMP並列化に必要なデータ.
+#ifdef _OPENMP
+    call init_for_parallel_computing(this, grd)
+#endif
 end subroutine
+
+subroutine init_for_parallel_computing(this, grd)
+    !! Poisson方程式を並列化して解く場合に呼び出す.
+    class(solver_fs),intent(inout) :: this
+    type(rectilinear_mesh_t),intent(in) :: grd
+    integer(ip) icmx
+    integer(ip) i, j, k, imx, jmx, kmx, nr, nb
+    
+    !各カラーの集合の元の個数を数える.
+    icmx = grd%get_cell_count()
+    call grd%get_extents_sub(imx, jmx, kmx)
+    block 
+        integer nr1, nb1, nr2, nb2
+        integer ny, nz
+        ! 内部のセルの個数は(imx - 1), (jmx - 1), (kmx - 1)個.
+        nr1 = imx/2           !j=2,k=2の列での赤の個数.
+        nb1 = (imx - 1) - nr1 !同列の黒の個数.
+        ny = jmx/2            !nr1と同じ個数を持つ列の個数.
+        
+        nr2 = nr1*ny + nb1*(jmx - 1 - ny) !k=2の赤の個数.
+        nb2 = nb1*ny + nr1*(jmx - 1 - ny)
+        
+        nz = kmx/2
+        nr = nr2*nz + nb2*(kmx - 1 - nz)
+        nb = nb2*nz + nr2*(kmx - 1 - nz)
+
+        if (nr + nb /= icmx) then
+            print *, nr, nb
+            error stop
+        endif
+
+        print "('    Red-Black coloring : Red = ', i0, ', black = ', i0)", nr, nb
+
+        allocate(this%c_black(3,nb), source = -99)
+        allocate(this%c_red(3,nr), source = -99)
+    
+    end block
+        
+    nr = 1
+    nb = 1
+    do k = 2, kmx
+    do j = 2, jmx
+    do i = 2, imx
+        if ( mod(i+j+k,2) == 0 ) then
+            this%c_red(1,nr) = i
+            this%c_red(2,nr) = j
+            this%c_red(3,nr) = k
+            nr = nr + 1
+        else
+            this%c_black(1,nb) = i
+            this%c_black(2,nb) = j
+            this%c_black(3,nb) = k
+            nb = nb + 1
+        end if
+    end do
+    end do            
+    end do
+
+    if ( any(this%c_red == -99) .or. any(this%c_black == -99)) then
+        error stop "ERROR(fs_solver_t) :: Error in creating array ""c_black"" or ""c_red"". "
+    end if
+
+end subroutine
+
+subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
+    !!ループ前の処理. 流体クラスに境界条件を適用し, フラックスを初期値で更新しておく.
+    !!@note 内部の速度と圧力は事前に外部で初期化されている. ここでは仮想セルへの更新が行われる.
+    class(solver_fs),intent(inout) :: this
+    type(rectilinear_mesh_t),intent(in) :: grd
+    type(fluid_field_t),intent(inout) :: fld
+    type(case_setting),intent(in) :: settings_case
+    type(bc_t),intent(in) :: bc_types(:)
+
+    integer(ip) extents(3)
+
+    extents = grd%get_extents()
+
+    call boundary_condition_velocity(extents, fld%velocity, grd%dx, bc_types)
+    call boundary_condition_pressure(extents, fld%pressure, grd%dx, bc_types)
+    
+    !!ループ前の初期値で面流束を求めておく.
+    call cal_face_velocity(extents(1), extents(2), extents(3), fld%velocity, fld%mflux_i, fld%mflux_j, fld%mflux_k)
+    if ( this%correct_face_flux ) then
+        !!面流束を圧力で補正する設定の場合はそれに倣う.
+        
+        !!@note 
+        !! 基本的に初期値は一様で与えることが多い. その場合は無意味であることに注意.
+        !! taylor-green渦のシミュレーションなど初期値を与える場合には効果があるかもしれない.
+        !!@endnote
+        call fs_correction_face_flux(extents(1), extents(2), extents(3), &
+             grd%ds, grd%dv, settings_case%dt, fld%pressure, fld%mflux_i, fld%mflux_j, fld%mflux_k)
+    end if
+
+end subroutine
+    
 
 subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
     !!中間速度を計算する.
@@ -137,15 +245,24 @@ subroutine calc_corrected_velocity(this, extents, ds, dv, dx, del_t, mi, mj, mk,
     logical,intent(out) :: diverged
 
     integer(IP) :: imx, jmx, kmx
+    real(dp),allocatable :: div_u_star(:,:,:)
 
     imx = extents(1)
     jmx = extents(2)
     kmx = extents(3)
 
+    allocate(div_u_star(2:imx,2:jmx,2:kmx))
+
     call cal_face_velocity(imx, jmx, kmx, v, mi, mj, mk)
 
-    call fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, this%coeffs_p, mi, mj, mk, p, &
-                       setting, p_ic, bc_types, diverged)
+    call calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, del_t, div_u_star)
+
+#ifdef _OPENMP
+    call fs_poisson_parallel(imx, jmx, kmx, dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged, &
+    this%c_red, this%c_black)
+#else
+    call fs_poisson_v2(imx, jmx, kmx, dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged)
+#endif
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
 
@@ -378,10 +495,10 @@ subroutine calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, dt,
     !!圧力Poisson方程式の右辺(中間速度の発散)を計算する.
     integer(ip),intent(in) :: imx, jmx, kmx
     real(dp),intent(in) :: ds(3)
-    real(dp),intent(in) :: mi(2:,2:,2:), mj(2:,2:,2:), mk(2:,2:,2:)
+    real(dp),intent(in) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
         !!1st stepの後に計算された面の速度. 中間段階速度の面への線形内挿により計算されている.
     real(dp),intent(in) :: dt
-    real(dp),intent(inout) :: source_b(:,:,:)
+    real(dp),intent(inout) :: source_b(2:,2:,2:)
         !!圧力Poisson方程式の右辺.
 
     integer(ip) i, j, k
@@ -404,14 +521,13 @@ subroutine calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, dt,
 
 end subroutine
 
-subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p, setting, p_ic, bc_types, diverged)
+subroutine fs_poisson_v2(imx, jmx, kmx, dx, coeffs, source_b, p, setting, p_ic, bc_types, diverged)
     !!gauss-seidel法により圧力を求める.
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     integer(IP),intent(in) :: imx, jmx, kmx
-    real(DP),intent(in) :: ds(3), dv, dx(3)
-    real(DP),intent(in) :: del_t
+    real(DP),intent(in) :: dx(3)
     type(mat_a),intent(in) :: coeffs
-    real(DP),intent(in) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
+    real(DP),intent(in) :: source_b(2:,2:,2:)
     real(DP),intent(inout) :: p(:,:,:)
     type(slv_setting),intent(in) :: setting
     real(DP),intent(in) :: p_ic
@@ -420,8 +536,6 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p
 
     integer(IP) itr
     real(DP) resid_, den_
-    real(DP) b
-    real(DP) me, mw, mn, ms, mt, mb
     real(DP),allocatable :: p0(:,:,:)
 
     integer(IP) :: itr_mx
@@ -451,22 +565,10 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p
         do k = 2, kmx
         do j = 2, jmx
         do i = 2, imx
-            me = mi(i  ,j  ,k  )*ds(1)
-            mw = mi(i-1,j  ,k  )*ds(1)
-            mn = mj(i  ,j  ,k  )*ds(2)
-            ms = mj(i  ,j-1,k  )*ds(2)
-            mt = mk(i  ,j  ,k  )*ds(3)
-            mb = mk(i  ,j  ,k-1)*ds(3)
-            b = (me - mw + mn - ms + mt - mb)/del_t
 
-            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(b - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
+            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
                                                         - coeffs%as*p(i  ,j-1,k  ) - coeffs%an*p(i  ,j+1,k  ) &
                                                         - coeffs%ab*p(i  ,j  ,k-1) - coeffs%at*p(i  ,j  ,k+1))/coeffs%ap
-            !point jacobi
-            ! p(i,j,k) = (b - coeffs%aw*p0(i-1,j  ,k  ) - coeffs%ae*p0(i+1,j  ,k  ) &
-            !               - coeffs%as*p0(i  ,j-1,k  ) - coeffs%an*p0(i  ,j+1,k  ) &
-            !               - coeffs%ab*p0(i  ,j  ,k-1) - coeffs%at*p0(i  ,j  ,k+1))/coeffs%ap
-
         end do
         end do
         end do
@@ -487,7 +589,7 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p
 
         if ( den_ == 0.0_dp ) exit !初期値や条件によってはゼロのままも有り得る. NANを防ぐ.
             
-        resid_ = sqrt(resid_/icmx)/sqrt(den_/icmx)
+        resid_ = sqrt(resid_)/sqrt(den_)
 
         if ( resid_ <= tol .or. itr >= itr_mx) then
             print "('pressure(',i0,') converged, resid = ',g0)", itr, resid_
@@ -512,7 +614,127 @@ subroutine fs_poisson_v2(imx, jmx, kmx, ds, dv, dx, del_t, coeffs, mi, mj, mk, p
         end if
         
         p0(:,:,:) = p(:,:,:)
+        
+    end do
 
+
+end subroutine
+
+subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, p_ic, bc_types, diverged, color_r, color_b)
+    !!Red-black SOR法により圧力を求める.
+    !!@note 並列化する場合に呼び出される. シングルスレッドの場合はむしろ時間がかかるので呼び出さない方が良い.
+    use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
+    integer(IP),intent(in) :: imx, jmx, kmx
+    real(DP),intent(in) :: dx(3)
+    type(mat_a),intent(in) :: coeffs
+    real(DP),intent(in) :: source_b(2:,2:,2:)
+    real(DP),intent(inout) :: p(:,:,:)
+    type(slv_setting),intent(in) :: setting
+    real(DP),intent(in) :: p_ic
+    type(bc_t),intent(in) :: bc_types(6)
+    logical,intent(out) :: diverged
+    integer(ip),intent(in) :: color_r(:,:)
+    integer(ip),intent(in) :: color_b(:,:)
+
+    integer(IP) itr
+    real(DP) resid_, den_
+    real(DP),allocatable :: p0(:,:,:)
+
+    integer(IP) :: itr_mx
+    real(DP) :: tol
+    real(DP) :: alp
+    integer(IP) icmx
+
+    integer(IP) i, j, k, l, lrmx, lbmx
+    integer(IP) extents_(3)
+
+    extents_(1) = imx
+    extents_(2) = jmx
+    extents_(3) = kmx
+
+    lrmx = size(color_r, dim=2)
+    lbmx = size(color_b, dim=2)
+
+    allocate(p0, source = p)
+    itr_mx = setting%itr_max
+    tol = setting%tolerance
+    alp = setting%relax_coeff
+
+    icmx = (imx - 1)*(jmx - 1)*(kmx - 1)
+
+    p0(:,:,:) = p_ic
+    p(:,:,:) = p_ic
+
+    diverged = .false.
+    do itr = 1, itr_mx
+
+        !red color
+        !$omp parallel private(i, j, k, l)
+        !$omp do schedule(STATIC)
+        do l = 1, lrmx
+            i = color_r(1,l) ; j = color_r(2,l) ; k = color_r(3,l)
+            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
+                    - coeffs%as*p(i  ,j-1,k  ) - coeffs%an*p(i  ,j+1,k  ) &
+                    - coeffs%ab*p(i  ,j  ,k-1) - coeffs%at*p(i  ,j  ,k+1))/coeffs%ap
+
+        end do
+        !$omp end do
+
+        !black color
+        !$omp do schedule(STATIC)
+        do l = 1, lbmx
+            i = color_b(1,l) ; j = color_b(2,l) ; k = color_b(3,l)
+            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
+                    - coeffs%as*p(i  ,j-1,k  ) - coeffs%an*p(i  ,j+1,k  ) &
+                    - coeffs%ab*p(i  ,j  ,k-1) - coeffs%at*p(i  ,j  ,k+1))/coeffs%ap
+
+        end do
+        !$omp end do
+        !$omp end parallel
+
+        call boundary_condition_pressure(extents_, p, dx, bc_types) !仮想セルの圧力を更新する.
+
+        !収束判定.
+        resid_ = 0.0_dp
+        den_ = 0.0_dp
+        do k = 2, kmx
+        do j = 2, jmx
+        do i = 2, imx
+            resid_ = resid_ + (p(i,j,k) - p0(i,j,k))**2.0_dp
+            den_ = den_ + (p(i,j,k))**2.0_dp
+        end do
+        end do
+        end do
+
+        if ( den_ == 0.0_dp ) exit !初期値や条件によってはゼロのままも有り得る. NANを防ぐ.
+            
+        resid_ = sqrt(resid_)/sqrt(den_)
+
+        if ( resid_ <= tol .or. itr >= itr_mx) then
+            print "('pressure(',i0,') converged, resid = ',g0)", itr, resid_
+            ! print "('exit.')"
+            exit
+        end if
+        
+        if ( resid_ > huge(0.0_dp)) then
+            print "(A)", "pressure diverged."
+            diverged = .true.
+            return
+        end if
+
+        if ( any(ieee_is_nan(p))) then
+            print"(A)", "NAN detected in pressure."
+            diverged = .true.
+            return
+        end if
+
+        if ( (itr > 1000 .and. mod(itr,1000) == 0) ) then
+            print "('pressure(',i0,'), resid = ',g0)", itr, resid_
+        end if
+        
+        !$omp parallel workshare
+        p0(:,:,:) = p(:,:,:)
+        !$omp end parallel workshare
     end do
 
 

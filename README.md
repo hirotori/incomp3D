@@ -2,7 +2,8 @@
 等間隔直交格子のための非圧縮性流体ソルバ.
 
 ## 現在の状態
-移流項と粘性項の評価を選択可能にした. 陰解法には対応出来ていない.
+- 移流項と粘性項の評価を選択可能にした. 陰解法には対応出来ていない.
+- 並列化に対応.(OpenMP)
 
 ## 概要
 等間隔直交格子で流れ計算を行う. 
@@ -44,6 +45,7 @@ gitがない場合はDownload Zipから.
     `cmake .. -DCMAKE_Fortran_COMPILER=gfortran`
 
     コンパイラオプションを適用する場合は上に`-DCMAKE_BUILD_TYPE=`を指定する. デバッグモードは`debug`, リリースの場合は`release`とする.
+    OpenMPによる並列化を行う場合は`-Duse_OpenMP=ON`とする. 指定しない場合は並列化は行われない.
 
 3. cmakeによるconfigureが完了後, `make`コマンドを実行することでコンパイルを実施する. 終了後アーカイブ`libincomp3d.a`, `libincomp3d_util.a`が生成される.
 

@@ -19,6 +19,7 @@ contains
 
 subroutine run(this, current_case, solver)
     !!各ケースに合わせた非圧縮流れ計算を実施する.
+    !$ use omp_lib
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     class(simulator_t),intent(inout) :: this
     class(case_common_t),intent(inout) :: current_case
@@ -32,34 +33,43 @@ subroutine run(this, current_case, solver)
         !!流れ場.
 
     integer(ip) nstep, extents(3)
+    integer(ip) :: nthread = 1
+        !!コンソールに表示するための並列スレッド数. 並列化されない場合はシングルスレッドを表す1.
     real(dp) dt, re
     character(*),parameter :: time_bar = repeat("=", 35)
     type(date_t) :: start_date, end_date
     logical sim_diverged
 
+    !並列スレッド数の指定.
+    !$ call omp_set_num_threads(omp_get_max_threads())
+    !$ nthread = omp_get_max_threads()
+
     start_date = get_current_date_and_time()
 
-    !ループ前の処理
+    !!ループ前の処理. ケースクラスで場を初期化かつメッシュの生成. 
     call current_case%phase_pre_process(grid, fluid)
     extents(:) = grid%get_extents()
-    call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
-    call boundary_condition_pressure(extents, fluid%pressure, grid%dx, current_case%bc_types)
-
-    !陰解法のため, ループ前の初期値で面流束を求める. 初期値は連続の式を満たすと仮定して, 
-    !線形補間だけ行う. 厳密な圧力場が分かっていればその直後に補正をかけても良いが, だいたい一様初期値なので意味が無いとして保留.
-    call cal_face_velocity(extents(1), extents(2), extents(3), fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
-
-    allocate(this%v_old, source = fluid%velocity)
+    !!その後ソルバの共通パラメータ(空間スキームの選択)を設定する.
     call solver%init(fluid, grid, current_case%settings_solver, current_case%settings_case) 
-
+    !!次に境界条件を適用させ, 仮想セルを更新する. この処理はシミュレーターでなくソルバに任せる.
+    !!@note ここはシミュレーターに任せても問題は無いが, 面フラックスの修正有り/無しがソルバに委ねられているため.
+    call solver%process_before_loop(grid, fluid, current_case%settings_case, current_case%bc_types)
+    
+    !既知の速度場を保持しておく.
+    allocate(this%v_old, source = fluid%velocity)
+    
+    !初期場を書き出す.
     call current_case%phase_writeout(grid, fluid, 0)
 
     dt = current_case%settings_case%dt
     re = current_case%settings_case%reynolds_number
     do nstep = current_case%settings_case%nstart, current_case%settings_case%nend
+        !!メインループでは,  1.中間速度の計算, 2.圧力補正の順に行う.
         print "(A)", time_bar
         print "('nstep = ',i0, ', time = ',g0)", nstep, real(nstep,dp)*current_case%settings_case%dt
+        print "('max thread = ',i0)", nthread
         print "(A)", time_bar
+
         call current_case%set_current_step(nstep)
 
         !どのアルゴリズムでも共通して計算させる.
@@ -71,6 +81,7 @@ subroutine run(this, current_case, solver)
                                             fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%dudr, &
                                             current_case%bc_types)
 
+        !中間速度に対する境界条件の適用. ソルバの外部で行う理由は, この処理が共通なため.
         call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
 
         call solver%calc_corrected_velocity(extents, grid%ds, grid%dv, grid%dx, dt, &
@@ -78,6 +89,7 @@ subroutine run(this, current_case, solver)
                                            current_case%settings_solver, current_case%settings_case%p_ref, current_case%bc_types, &
                                            sim_diverged)
 
+        !補正された新しい時間段階の速度に対する境界条件の適用.
         call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
 
         this%v_old(:,:,:,:) = fluid%velocity(:,:,:,:)

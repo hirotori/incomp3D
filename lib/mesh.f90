@@ -13,6 +13,7 @@ module mesh_m
         procedure,public :: init => init_mesh
         procedure,public :: get_extents
         procedure,public :: get_extents_sub
+        procedure,public :: get_cell_count
         procedure,public :: calc_geometry
     end type
     
@@ -40,6 +41,13 @@ subroutine get_extents_sub(this, imx, jmx, kmx)
     kmx = this%kmax
 
 end subroutine
+
+integer(ip) function get_cell_count(this)
+    class(rectilinear_mesh_t),intent(in) :: this
+
+    get_cell_count = (this%imax - 1)*(this%jmax - 1)*(this%kmax - 1)
+
+end function
 
 subroutine init_mesh(this, imx, jmx, kmx, lengths)
     !!等間隔直交格子メッシュを生成し初期化する.

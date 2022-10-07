@@ -14,14 +14,25 @@ add_library(incomp3d STATIC
 
 if(CMAKE_Fortran_COMPILER_ID MATCHES Intel)
     target_compile_options(incomp3d PRIVATE
-        $<$<CONFIG:Debug>:-O0 -warn all -check all -traceback>
-        $<$<CONFIG:Release>:-O2 -fPIC>
+        $<$<CONFIG:Debug>:-O0 -warn all -check all -traceback -fpp>
+        $<$<CONFIG:Release>:-O3 -fPIC -finline -fpp>
+        $<$<CONFIG:RelWithDevInfo>:-O2 -fpp -p>
     )
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES GNU)
     target_compile_options(incomp3d PRIVATE
-        $<$<CONFIG:Debug>: -O0 -Wall -fcheck=all -fbacktrace>
-        $<$<CONFIG:Release>: -O2>
+        $<$<CONFIG:Debug>: -O0 -Wall -fcheck=all -fbacktrace -cpp>
+        $<$<CONFIG:Release>: -O3 -cpp>
+        $<$<CONFIG:RelWithDevInfo>:-O2 -cpp -pg>
     )
 endif()
 
-target_link_libraries(incomp3d incomp3d_util)
+if(OpenMP_Fortran_FOUND)
+    target_compile_options(incomp3d PRIVATE 
+        "${OpenMP_Fortran_FLAGS}"
+    )
+
+    target_link_libraries(incomp3d 
+        incomp3d_util
+        OpenMP::OpenMP_Fortran 
+    )
+endif()
