@@ -1,24 +1,16 @@
 module vtk_structured_points_writer_m
     use floating_point_parameter_m
+    use abst_vtk_legacy_writer_m
     use vtk_field_data_m
     implicit none
     private
-    character(*),parameter :: HEADER_ = "# vtk DataFile Version 3.0"
-    character(*),parameter :: COMMENT_ = "OUTPUT"
-    character(*),parameter :: FORMAT_ASCII_ =  "ASCII"
-    character(*),parameter :: FORMAT_BINARY_ =  "BINARY"
     character(*),parameter :: DATASET_ =  "DATASET STRUCTURED_POINTS"
-    character(*),parameter :: DIMENSIONS_ =  "DIMENSIONS"
     character(*),parameter :: ORIGIN_ =  "ORIGIN"
     character(*),parameter :: SPACING_ =  "SPACING"
 
-    character(*),parameter :: ERR_MSG_HEADER = "field_file_t ::"
-
-    type vtk_structured_points_t
-        integer(IP) :: dimensions(3)
+    type,extends(base_vtk_legacy_str_grid_t):: vtk_structured_points_t
         real(DP) :: origin(3)
         real(DP) :: spacings(3)
-        integer(IP),private :: cell_count_ 
         contains
         procedure :: init => init_
         procedure :: writeout
@@ -34,11 +26,9 @@ contains
         real(DP),intent(in) :: origin(3)
         real(DP),intent(in) :: spacings(3)
         
-        this%dimensions = dimensions
+        call this%set_dimensions(dimensions)
         this%origin = origin
         this%spacings = spacings
-
-        this%cell_count_ = product(dimensions(:)-1)
 
     end subroutine
     
@@ -50,25 +40,20 @@ contains
 
         integer(IP) unit, n_, ic_
 
-        if(present(holder) .and. .not. allocated(holder)) error stop ERR_MSG_HEADER//" unallocated holder recieved."
-        open(newunit=unit, file=path, status="replace", action="write", form="formatted")
-        write(unit,"(A)") HEADER_
-        write(unit,"(A)") COMMENT_
-        write(unit,"(A)") FORMAT_ASCII_
-        write(unit,"(A)") DATASET_
-        write(unit,"(A,1x,*(g0.6,1x))") DIMENSIONS_, this%dimensions
-        write(unit,"(A,1x,*(g0.6,1x))") ORIGIN_, this%origin
-        write(unit,"(A,1x,*(g0.6,1x))") SPACING_, this%spacings
+        if(present(holder) .and. .not. allocated(holder)) error stop " unallocated holder recieved."
+        
+        call writeout_common(this, unit, path)
 
-        if ( allocated(holder) ) then
-            write(unit,"(A)")
-            write(unit,"(A,1x,i0)") "CELL_DATA",this%cell_count_
-            do n_ = 1, size(holder)
-                call holder(n_)%write_data(unit, this%cell_count_)
-                write(unit,"(A)")
-            end do
+        if ( .not. this%is_binary ) then
+            write(unit,"(A)") DATASET_
+            write(unit,"(A,1x,*(g0.6,1x))") "DIMENSIONS", this%dimensions
+            write(unit,"(A,1x,*(g0.6,1x))") ORIGIN_, this%origin
+            write(unit,"(A,1x,*(g0.6,1x))") SPACING_, this%spacings
+    
+            if ( allocated(holder) ) then
+                call writeout_common_field_data(this, unit, holder)
+            end if    
         end if
-
         close(unit)
         
         print*, "output complete. path :: ", path

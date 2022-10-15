@@ -29,6 +29,7 @@ module vtk_field_data_m
         procedure,private :: register_r1, convert_r3_to_r1_and_register_
         generic,public :: register_scalar => register_r1, convert_r3_to_r1_and_register_
         procedure,public :: write_data => write_data_ascii
+        procedure,public :: write_data_binary
     
     end type
     
@@ -163,6 +164,40 @@ subroutine write_data_ascii(holder, unit, data_size)
             write(unit, "(*(g0,1x))") holder%val_r2(1:, ic_)
         end do
     end if
+end subroutine
+
+subroutine write_data_binary(holder, unit, data_size)
+    !!登録したデータをBINARY形式で指定したunitに書き込む.
+    !!@note ファイルはstream形式.
+    class(attrib_data_holder_t),intent(in) :: holder
+    integer(ip),intent(in) :: unit
+        !!論理装置番号.
+    integer(ip),intent(in) :: data_size
+        !!ライターが所持するデータ点の個数. コレと一致しない場合書き込みは中止される.
+
+    integer(ip) ic_
+    character(*),parameter :: LF_ = new_line("")
+
+    if ( allocated(holder%val_r1)) then
+        write(unit) "SCALARS "//holder%name//" double"//LF_
+        write(unit) "LOOKUP_TABLE "//LOOKUP_TABLE_NAME//LF_
+        
+        if ( size(holder%val_r1) /= data_size ) error stop "ERROR (vtk_field_data) :: invalid data size." 
+        
+        write(unit) holder%val_r1(:)
+        
+    else if ( allocated(holder%val_r2)) then
+        write(unit) "VECTORS "//holder%name//" double"//LF_
+
+        if ( size(holder%val_r2, dim=2) /= data_size ) error stop "ERROR (vtk_field_data) :: invalid data size."
+
+        do ic_ = lbound(holder%val_r2, dim=2), ubound(holder%val_r2, dim=2)
+            write(unit) holder%val_r2(1:, ic_)
+        end do
+    end if
+
+    write(unit) LF_
+
 end subroutine
     
 end module vtk_field_data_m
