@@ -5,6 +5,7 @@ add_library(incomp3d_util STATIC
  linear_algebra.f90
  system_operator.f90
  time_monitor.f90
+ abstract_legacy_vtk_writer.f90
  vtk_field_data.f90
  vtk_structured_points_writer.f90
 )
