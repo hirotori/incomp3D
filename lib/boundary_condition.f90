@@ -176,7 +176,7 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
 
         case (bc_periodic, bc_periodic_buffer)
             
-            v(:,2:imx,jnb,2:kmx) = v(:,2:imx,jnb,2:kmx)
+            v(:,2:imx,j,2:kmx) = v(:,2:imx,jnb,2:kmx)
     
         case (bc_outlet_unsteady)
             error stop "Sorry, Not Implemented."
