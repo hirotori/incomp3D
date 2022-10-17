@@ -65,16 +65,10 @@ subroutine init_solver_2(this, fld, grd, settings_slv, setting_case)
 
 end subroutine
 
-subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
+subroutine predict_pseudo_velocity(this, grid, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
     !!中間速度を計算する.
     class(solver_fs_imp_t),intent(inout) :: this
-    integer(ip),intent(in) :: extents(3)
-    real(DP),intent(in) :: ds(3)
-        !!検査面の大きさ
-    real(DP),intent(in) :: dv
-        !!検査体積の大きさ
-    real(DP),intent(in) :: dx(3)
-        !!検査体積の幅
+    type(rectilinear_mesh_t),intent(in) :: grid
     real(DP),intent(in) :: del_t
         !!時間刻み
     real(DP),intent(in) :: re
@@ -92,24 +86,26 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
     type(bc_t),intent(in) :: bc_types(:)
     
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:)
-    integer(ip) i, j, k, l
+    integer(ip) i, j, k, l, imx, jmx, kmx
     real(dp) rei
 
-    allocate(conv(3,2:extents(1),2:extents(2),2:extents(3)))
-    allocate(diff(3,2:extents(1),2:extents(2),2:extents(3)))    
+    call grid%get_extents_sub(imx, jmx, kmx)
+
+    allocate(conv(3,2:imx,2:jmx,2:kmx))
+    allocate(diff(3,2:imx,2:jmx,2:kmx))    
         
-    call calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, conv, diff)
+    call calc_convective_and_diffusive_flux(this, grid%get_extents(), grid%ds, grid%dv, grid%dx, re, v0, mi, mj, mk, dudr, conv, diff)
 
     rei = 1.0_dp/re
-    do k = 2, extents(3)
-    do j = 2, extents(2)
-    do i = 2, extents(1)
-        this%rhs_(:,i,j,k) = v0(:,i,j,k)*dv - del_t*(conv(:,i,j,k) - 0.5_dp*rei*diff(:,i,j,k) - force(:)*dv)
+    do k = 2, kmx
+    do j = 2, jmx
+    do i = 2, imx
+        this%rhs_(:,i,j,k) = v0(:,i,j,k)*grid%dv - del_t*(conv(:,i,j,k) - 0.5_dp*rei*diff(:,i,j,k) - force(:)*grid%dv)
     end do
     end do        
     end do
 
-    call calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
+    call calc_pseudo_velocity_common_core(this, grid%get_extents(), grid%dx, v, bc_types)
 
     !@TODO 発散した後の処理. 
 

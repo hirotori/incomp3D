@@ -172,16 +172,10 @@ subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
 end subroutine
     
 
-subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
+subroutine predict_pseudo_velocity(this, grid, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
     !!中間速度を計算する.
     class(solver_fs),intent(inout) :: this
-    integer(ip),intent(in) :: extents(3)
-    real(DP),intent(in) :: ds(3)
-        !!検査面の大きさ
-    real(DP),intent(in) :: dv
-        !!検査体積の大きさ
-    real(DP),intent(in) :: dx(3)
-        !!検査体積の幅
+    type(rectilinear_mesh_t),intent(in) :: grid
     real(DP),intent(in) :: del_t
         !!時間刻み
     real(DP),intent(in) :: re
@@ -202,9 +196,7 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
     integer(ip) imx, jmx, kmx, i, j, k
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:), rei
 
-    imx = extents(1)
-    jmx = extents(2)
-    kmx = extents(3)
+    call grid%get_extents_sub(imx, jmx, kmx)
 
     allocate(conv(3,2:imx,2:jmx,2:kmx))
     allocate(diff(3,2:imx,2:jmx,2:kmx))
@@ -213,14 +205,14 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
     ! call fs_prediction_v2(imx, jmx, kmx, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk)
 
     !フラックスを作ってから後で右辺を計算する. メモリ量に不安がある場合は今まで通り上の方法で. 
-    call calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, conv, diff)
+    call calc_convective_and_diffusive_flux(this, grid%get_extents(), grid%ds, grid%dv, grid%dx, re, v0, mi, mj, mk, dudr, conv, diff)
 
     rei = 1.0_dp/re
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
        
-        v(:,i,j,k) = v0(:,i,j,k) - del_t*(conv(:,i,j,k) - rei*diff(:,i,j,k) - force(:)*dv)/dv
+        v(:,i,j,k) = v0(:,i,j,k) - del_t*(conv(:,i,j,k) - rei*diff(:,i,j,k) - force(:)*grid%dv)/grid%dv
 
     end do
     end do
@@ -230,11 +222,10 @@ subroutine predict_pseudo_velocity(this, extents, ds, dv, dx, del_t, re, force, 
 
 end subroutine
 
-subroutine calc_corrected_velocity(this, extents, ds, dv, dx, del_t, mi, mj, mk, p, v,setting, p_ic, bc_types, diverged)
+subroutine calc_corrected_velocity(this, grid, del_t, mi, mj, mk, p, v,setting, p_ic, bc_types, diverged)
     !!圧力Poisson方程式を解いて速度とフラックスを修正する.
     class(solver_fs),intent(in) :: this
-    integer(IP),intent(in) :: extents(3)
-    real(DP),intent(in) :: ds(3), dv, dx(3)
+    type(rectilinear_mesh_t),intent(in) :: grid
     real(DP),intent(in) :: del_t
     real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
     real(DP),intent(inout) :: p(:,:,:)
@@ -247,30 +238,28 @@ subroutine calc_corrected_velocity(this, extents, ds, dv, dx, del_t, mi, mj, mk,
     integer(IP) :: imx, jmx, kmx
     real(dp),allocatable :: div_u_star(:,:,:)
 
-    imx = extents(1)
-    jmx = extents(2)
-    kmx = extents(3)
+    call grid%get_extents_sub(imx, jmx, kmx)
 
     allocate(div_u_star(2:imx,2:jmx,2:kmx))
 
     call cal_face_velocity(imx, jmx, kmx, v, mi, mj, mk)
 
-    call calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, del_t, div_u_star)
+    call calc_divergence_of_pseudo_velocity(imx, jmx, kmx, grid%ds, mi, mj, mk, del_t, div_u_star)
 
 #ifdef _OPENMP
-    call fs_poisson_parallel(imx, jmx, kmx, dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged, &
+    call fs_poisson_parallel(imx, jmx, kmx, grid%dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged, &
     this%c_red, this%c_black)
 #else
-    call fs_poisson_v2(imx, jmx, kmx, dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged)
+    call fs_poisson_v2(imx, jmx, kmx, grid%dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged)
 #endif
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
 
-    call fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v)
+    call fs_correction_v2(imx, jmx, kmx, grid%ds, grid%dv, del_t, p, v)
 
     !面の流束の速度補正. 
     if ( this%correct_face_flux ) then
-        call fs_correction_face_flux(imx, jmx, kmx, ds, dv, del_t, p, mi, mj, mk)
+        call fs_correction_face_flux(imx, jmx, kmx, grid%ds, grid%dv, del_t, p, mi, mj, mk)
     else
         !圧力で補正しない場合. mi, mj, mkは単に速度の線形補間として取り扱う. 
         !その場合ここで更新する必要がある. vはこの時点で新しい段階の速度なので, mi, mj, mkも新しい速度の線形補間となる.
@@ -623,6 +612,7 @@ end subroutine
 subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, p_ic, bc_types, diverged, color_r, color_b)
     !!Red-black SOR法により圧力を求める.
     !!@note 並列化する場合に呼び出される. シングルスレッドの場合はむしろ時間がかかるので呼び出さない方が良い.
+    !$ use omp_lib
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     integer(IP),intent(in) :: imx, jmx, kmx
     real(DP),intent(in) :: dx(3)
@@ -648,6 +638,8 @@ subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, 
     integer(IP) i, j, k, l, lrmx, lbmx
     integer(IP) extents_(3)
 
+    !$ real(dp) stime, etime
+
     extents_(1) = imx
     extents_(2) = jmx
     extents_(3) = kmx
@@ -666,6 +658,7 @@ subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, 
     p(:,:,:) = p_ic
 
     diverged = .false.
+    !$ stime = omp_get_wtime()
     do itr = 1, itr_mx
 
         !red color
@@ -712,7 +705,8 @@ subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, 
 
         if ( resid_ <= tol .or. itr >= itr_mx) then
             print "('pressure(',i0,') converged, resid = ',g0)", itr, resid_
-            ! print "('exit.')"
+            !$ etime = omp_get_wtime()
+            !$ print "('elapsed time = ', g0)", etime - stime
             exit
         end if
         
@@ -773,9 +767,10 @@ subroutine fs_correction_face_flux(imx, jmx, kmx, ds, dv, del_t, p, mi, mj, mk)
     real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
 
     integer(IP) i, j, k
-    !!面の流束を圧力で修正する.
 
-        !面速度 = 面に垂直な流速
+
+    !面速度 = 面に垂直な流速
+    !>面の流束を圧力で修正する.
     do k = 2, kmx
     do j = 2, jmx
     do i = 1, imx

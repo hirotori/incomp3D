@@ -75,7 +75,7 @@ subroutine run(this, current_case, solver)
         !どのアルゴリズムでも共通して計算させる.
         call calc_gradient_tensor(extents, grid%dv, grid%ds, grid%dx, fluid%velocity, fluid%dudr)
 
-        call solver%predict_pseudo_velocity(extents, grid%ds, grid%dv, grid%dx, dt, re, &
+        call solver%predict_pseudo_velocity(grid, dt, re, &
                                             current_case%settings_case%body_force, &
                                             this%v_old, &
                                             fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%dudr, &
@@ -84,7 +84,7 @@ subroutine run(this, current_case, solver)
         !中間速度に対する境界条件の適用. ソルバの外部で行う理由は, この処理が共通なため.
         call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
 
-        call solver%calc_corrected_velocity(extents, grid%ds, grid%dv, grid%dx, dt, &
+        call solver%calc_corrected_velocity(grid, dt, &
                                            fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%pressure, fluid%velocity, &
                                            current_case%settings_solver, current_case%settings_case%p_ref, current_case%bc_types, &
                                            sim_diverged)
