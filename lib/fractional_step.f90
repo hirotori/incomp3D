@@ -464,7 +464,7 @@ end subroutine
 
 subroutine set_matrix_p(coeffs, dsi, dsj, dsk, dv, imx, jmx, kmx)
     !!圧力Poisson方程式の係数行列の設定.
-    type(mat_a),intent(out) :: coeffs
+    type(mat_a),intent(inout) :: coeffs
     real(DP),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:)
     real(DP),intent(in) :: dv(2:,2:,2:)
     integer(IP),intent(in) :: imx, jmx, kmx

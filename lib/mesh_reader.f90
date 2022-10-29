@@ -54,6 +54,7 @@ subroutine original_format_reader(path, imx, jmx, kmx, lengths, r)
         read(unit,"(A)",iostat=iostat,iomsg=iomsg) format_
         read(unit,"(A)",iostat=iostat,iomsg=iomsg) comment_
         read(unit,*,iostat=iostat,iomsg=iomsg) imx, jmx, kmx
+        print "('Extents :: ', 3(i0,1x,:,', '))", imx, jmx, kmx
         !メッシュフォーマットによって場合分けする. 
         select case(trim(adjustl(format_)))
 
@@ -73,7 +74,9 @@ subroutine original_format_reader(path, imx, jmx, kmx, lengths, r)
                 end do
 
         case default
-            error stop "Wrong File format."
+            print "(A)","Wrong File format. format should be """//mesh_form_equil//""" or """//mesh_form_rectil//""". "
+            print "('For further description, please see README.')"
+            error stop "Error in mesh_reader.f90"
         end select
         
 end subroutine
