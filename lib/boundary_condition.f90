@@ -103,14 +103,15 @@ subroutine set_bc_type(types, type_ids, properties, extents)
 end subroutine
 
 
-subroutine boundary_condition_velocity(extents, v, dx, bc_type)
+subroutine boundary_condition_velocity(extents, v, bc_type)
     !!境界条件の適用. ここでは仮想セルに値を入れる.
+    !!@note 勾配規定条件は全て勾配ゼロ条件のみとする.
     integer(IP),intent(in) :: extents(3)
         !!格子点の個数. 1:x, 2:y, 3:z
     real(DP),intent(inout) :: v(:,:,:,:)
         !!速度
-    real(dp),intent(in) :: dx(3)
-        !!格子幅.
+    ! real(dp),intent(in) :: dx(3)
+    !     !!格子幅.
     type(bc_t),intent(in) :: bc_type(6)
         !!各面に設定された境界条件. これに対応して仮想セルの値を設定する.
 
@@ -134,15 +135,16 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
                 v(l,i,2:jmx,2:kmx) = 2.0_dp*bc_type(m)%v_bc(l) - v(l,inb,2:jmx,2:kmx)
             end do   
     
-        case (bc_fix_grad)
+        !勾配0の条件しか使われないので廃止.  
+        ! case (bc_fix_grad)
             
-            !!勾配規定条件は速度境界条件をそのまま利用する. ただし面に垂直な勾配として与えられる.
-            !!i方向であれば有効なのはv_bc(1).
-            do l = 1, 3
-                v(:,i,2:jmx,2:kmx) = dx(1)*bc_type(m)%v_bc(l) + v(:,inb,2:jmx,2:kmx)              
-            end do
+            ! !!勾配規定条件は速度境界条件をそのまま利用する. ただし面に垂直な勾配として与えられる.
+            ! !!i方向であれば有効なのはv_bc(1).
+            ! do l = 1, 3
+            !     v(:,i,2:jmx,2:kmx) = dx(1)*bc_type(m)%v_bc(l) + v(:,inb,2:jmx,2:kmx)              
+            ! end do
             
-        case (bc_periodic, bc_periodic_buffer)
+        case (bc_periodic, bc_periodic_buffer, bc_fix_grad)
             
             v(:,i,2:jmx,2:kmx) = v(:,inb,2:jmx,2:kmx)
 
@@ -168,13 +170,13 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
                 v(l,2:imx,j,2:kmx) = 2.0_dp*bc_type(m)%v_bc(l) - v(l,2:imx,jnb,2:kmx)
             end do   
     
-        case (bc_fix_grad)
+        ! case (bc_fix_grad)
             
-            do l = 1, 3
-                v(l,2:imx,j,2:kmx) = dx(2)*bc_type(m)%v_bc(l) + v(l,2:imx,jnb,2:kmx)
-            end do
+        !     do l = 1, 3
+        !         v(l,2:imx,j,2:kmx) = dx(2)*bc_type(m)%v_bc(l) + v(l,2:imx,jnb,2:kmx)
+        !     end do
 
-        case (bc_periodic, bc_periodic_buffer)
+        case (bc_periodic, bc_periodic_buffer, bc_fix_grad)
             
             v(:,2:imx,j,2:kmx) = v(:,2:imx,jnb,2:kmx)
     
@@ -198,13 +200,13 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
                 v(l,2:imx,2:jmx,k) = 2.0_dp*bc_type(m)%v_bc(l) - v(l,2:imx,2:jmx,knb)
             end do   
     
-        case (bc_fix_grad)
+        ! case (bc_fix_grad)
             
-            do l = 1, 3
-                v(l,2:imx,2:jmx,k) = dx(3)*bc_type(m)%v_bc(l) + v(l,2:imx,2:jmx,knb)
-            end do
+        !     do l = 1, 3
+        !         v(l,2:imx,2:jmx,k) = dx(3)*bc_type(m)%v_bc(l) + v(l,2:imx,2:jmx,knb)
+        !     end do
 
-        case (bc_periodic, bc_periodic_buffer)
+        case (bc_periodic, bc_periodic_buffer, bc_fix_grad)
             
             v(:,2:imx,2:jmx,k) = v(:,2:imx,2:jmx,knb)
     
@@ -219,11 +221,12 @@ subroutine boundary_condition_velocity(extents, v, dx, bc_type)
 
 end subroutine
 
-subroutine boundary_condition_pressure(extents, p, dx, bc_type)
+subroutine boundary_condition_pressure(extents, p, bc_type)
     !!境界条件の適用. ここでは仮想セルに値を入れる.
+    !!@note 勾配規定条件は全て勾配ゼロ条件のみとする.
     integer(IP),intent(in) :: extents(3)
     real(DP),intent(inout) :: p(:,:,:)
-    real(dp),intent(in) :: dx(3)
+    ! real(dp),intent(in) :: dx(3)
     type(bc_t),intent(in) :: bc_type(6)
 
     integer(IP) inb, jnb, knb
@@ -244,12 +247,12 @@ subroutine boundary_condition_pressure(extents, p, dx, bc_type)
 
             p(i,2:jmx,2:kmx) = 2.0_dp*bc_type(m)%p_bc - p(inb,2:jmx,2:kmx)
            
-        case (bc_fix_grad)
+        ! case (bc_fix_grad)
 
-            !!固定勾配の場合は境界の圧力値を面に垂直な勾配として扱う.
-            p(i,2:jmx,2:kmx) = dx(1)*bc_type(m)%p_bc + p(inb,2:jmx,2:kmx)
+        !     !!固定勾配の場合は境界の圧力値を面に垂直な勾配として扱う.
+        !     p(i,2:jmx,2:kmx) = dx(1)*bc_type(m)%p_bc + p(inb,2:jmx,2:kmx)
         
-        case (bc_periodic)
+        case (bc_periodic, bc_fix_grad)
             p(i,2:jmx,2:kmx) = p(inb,2:jmx,2:kmx)
             
         case (bc_periodic_buffer)
@@ -275,11 +278,11 @@ subroutine boundary_condition_pressure(extents, p, dx, bc_type)
 
             p(2:imx,j,2:kmx) = 2.0_dp*bc_type(m)%p_bc - p(2:imx,jnb,2:kmx)
            
-        case (bc_fix_grad)
+        ! case (bc_fix_grad)
 
-            p(2:imx,j,2:kmx) = dx(2)*bc_type(m)%p_bc + p(2:imx,jnb,2:kmx)
+        !     p(2:imx,j,2:kmx) = dx(2)*bc_type(m)%p_bc + p(2:imx,jnb,2:kmx)
 
-        case (bc_periodic)
+        case (bc_periodic, bc_fix_grad)
             p(2:imx,j,2:kmx) = p(2:imx,jnb,2:kmx)
 
         case (bc_periodic_buffer)
@@ -304,11 +307,11 @@ subroutine boundary_condition_pressure(extents, p, dx, bc_type)
 
             p(2:imx,2:jmx,k) = 2.0_dp*bc_type(m)%p_bc - p(2:imx,2:jmx,knb)
            
-        case (bc_fix_grad)
+        ! case (bc_fix_grad)
 
-            p(2:imx,2:jmx,k) = dx(3)*bc_type(m)%p_bc + p(2:imx,2:jmx,knb)
+        !     p(2:imx,2:jmx,k) = dx(3)*bc_type(m)%p_bc + p(2:imx,2:jmx,knb)
 
-        case (bc_periodic)
+        case (bc_periodic, bc_fix_grad)
             
             p(2:imx,2:jmx,k) = p(2:imx,2:jmx,knb)
 

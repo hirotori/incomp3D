@@ -25,7 +25,7 @@ function argv() result(args)
     type(args_t),allocatable :: args(:)
     integer :: argc
     integer i_, length_, stat_
-    ! character(255) err_msg_
+    character(255) err_msg_
 
     !|## 例
     !```Fortran
@@ -46,19 +46,28 @@ function argv() result(args)
     argc = command_argument_count() 
     allocate(args(0:argc))
     do i_ = 0, argc
-        ! call get_command_argument(number=i_, length=length_, status=stat_, errmsg=err_msg_)
+#ifdef __GFORTRAN__
         call get_command_argument(number=i_, length=length_, status=stat_)
+        if (stat_ /= 0) error stop "Some error occured in counting argument."
+#else
+        call get_command_argument(number=i_, length=length_, status=stat_, errmsg=err_msg_)
         if ( stat_ /= 0 ) then
-            ! print*, trim(err_msg_)
-            error stop "Some error occured in counting argument."
+                print*, trim(err_msg_)
+                error stop "Some error occured in counting argument."
         end if
+#endif
         allocate(character(length_) :: args(i_)%v)
-        ! call get_command_argument(number=i_, value=args(i_)%v, status=stat_, errmsg=err_msg_)
+#ifdef __GFORTRAN__
         call get_command_argument(number=i_, value=args(i_)%v, status=stat_)
+        if (stat_ /= 0) error stop "Some error occured in counting argument."
+#else
+        call get_command_argument(number=i_, value=args(i_)%v, status=stat_, errmsg=err_msg_)
         if ( stat_ /= 0 ) then
-            ! print*, trim(err_msg_)
-            error stop "Some error occured in getting command argument."
+                print*, trim(err_msg_)
+                error stop "Some error occured in getting command argument."
         end if
+#endif
+
     end do
 end function
     

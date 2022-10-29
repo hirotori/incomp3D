@@ -27,7 +27,7 @@ subroutine run(this, current_case, solver)
     class(solver_fs),intent(inout) :: solver
         !!非圧縮流れ計算のアルゴリズム.
 
-    type(rectilinear_mesh_t) :: grid
+    class(equil_mesh_t),allocatable :: grid
         !!計算空間.
     type(fluid_field_t) fluid
         !!流れ場.
@@ -46,13 +46,13 @@ subroutine run(this, current_case, solver)
 
     start_date = get_current_date_and_time()
 
-    !!ループ前の処理. ケースクラスで場を初期化かつメッシュの生成. 
+    !ループ前の処理. ケースクラスで場を初期化かつメッシュの生成. 
     call current_case%phase_pre_process(grid, fluid)
     extents(:) = grid%get_extents()
-    !!その後ソルバの共通パラメータ(空間スキームの選択)を設定する.
+    !その後ソルバの共通パラメータ(空間スキームの選択)を設定する.
     call solver%init(fluid, grid, current_case%settings_solver, current_case%settings_case) 
-    !!次に境界条件を適用させ, 仮想セルを更新する. この処理はシミュレーターでなくソルバに任せる.
-    !!@note ここはシミュレーターに任せても問題は無いが, 面フラックスの修正有り/無しがソルバに委ねられているため.
+    !次に境界条件を適用させ, 仮想セルを更新する. この処理はシミュレーターでなくソルバに任せる.
+    !@note ここはシミュレーターに任せても問題は無いが, 面フラックスの修正有り/無しがソルバに委ねられているため.
     call solver%process_before_loop(grid, fluid, current_case%settings_case, current_case%bc_types)
     
     !既知の速度場を保持しておく.
@@ -73,24 +73,20 @@ subroutine run(this, current_case, solver)
         call current_case%set_current_step(nstep)
 
         !どのアルゴリズムでも共通して計算させる.
-        call calc_gradient_tensor(extents, grid%dv, grid%ds, grid%dx, fluid%velocity, fluid%dudr)
+        call calc_gradient_tensor(extents, grid%dv, grid%dsx, grid%dsy, grid%dsz, grid%dx, grid%dy, grid%dz, &
+                                  fluid%velocity, fluid%dudr)
 
-        call solver%predict_pseudo_velocity(grid, dt, re, &
-                                            current_case%settings_case%body_force, &
-                                            this%v_old, &
-                                            fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%dudr, &
-                                            current_case%bc_types)
+        call solver%predict_pseudo_velocity(grid, fluid, dt, this%v_old, current_case%bc_types)
 
         !中間速度に対する境界条件の適用. ソルバの外部で行う理由は, この処理が共通なため.
-        call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
+        call boundary_condition_velocity(extents, fluid%velocity, current_case%bc_types)
 
-        call solver%calc_corrected_velocity(grid, dt, &
-                                           fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, fluid%pressure, fluid%velocity, &
+        call solver%calc_corrected_velocity(grid, fluid, dt, &
                                            current_case%settings_solver, current_case%settings_case%p_ref, current_case%bc_types, &
                                            sim_diverged)
 
         !補正された新しい時間段階の速度に対する境界条件の適用.
-        call boundary_condition_velocity(extents, fluid%velocity, grid%dx, current_case%bc_types)
+        call boundary_condition_velocity(extents, fluid%velocity, current_case%bc_types)
 
         this%v_old(:,:,:,:) = fluid%velocity(:,:,:,:)
 

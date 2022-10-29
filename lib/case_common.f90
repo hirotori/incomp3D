@@ -12,7 +12,9 @@ module case_common_m
     !! @endtodo
     !/////////////////////////////////////////////////////////////////
     use floating_point_parameter_m, only : ip, dp
+    use mesh_reader_m
     use mesh_m
+    use rectilinear_mesh_m
     use fluid_field_m
     use setting_parameter_m
     use boundary_condition_m, only : bc_t, set_bc_type
@@ -41,6 +43,7 @@ module case_common_m
         character(:),allocatable,private :: outdir_
             !!出力ディレクトリ.
         integer(ip),private :: current_step_ = 0
+        logical,private :: is_equil_mesh = .true.
         contains
         procedure,non_overridable :: get_current_step
         procedure,non_overridable :: get_current_time
@@ -48,6 +51,7 @@ module case_common_m
         procedure,non_overridable :: set_output_directory
         procedure,non_overridable :: get_current_output_directory
         procedure,non_overridable :: phase_pre_process
+        procedure,non_overridable :: uses_an_equil_mesh
         procedure :: add_on_pre_process
         procedure :: phase_post_process
         procedure :: phase_writeout
@@ -104,28 +108,49 @@ subroutine set_current_step(this, current_step)
 
 end subroutine
 
+logical function uses_an_equil_mesh(this)
+    class(case_common_t),intent(in) :: this
+
+    uses_an_equil_mesh = this%is_equil_mesh
+
+end function
+
 subroutine phase_pre_process(this, grid, fld)
     !!計算開始前の処理を行う. 
     !!計算の設定ロードや格子の初期化, 流体クラスの初期化を担う.
     !!@note 追加の処理が必要な場合は `add_on_pre_process` を使用する.
     !!@warning このメンバはオーバーライド出来ない.
     class(case_common_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(inout) :: grid
+    class(equil_mesh_t),allocatable,intent(inout) :: grid
     type(fluid_field_t),intent(inout) :: fld
 
     integer(ip) imx, jmx, kmx
     real(dp) lengths(3)
     integer(ip) :: bc_ids(2,6)
     real(dp) :: bc_properties(4,6)
+
+    real(dp),allocatable :: xyz(:,:,:,:)
     
     this%config_file = "config.txt"
     this%outdir_ = "output"
     if ( .not. mkdir(this%outdir_) )  print "(A)", "command skipped."
-    call read_config(this%config_file, imx, jmx, kmx, lengths, this%settings_case, this%settings_solver, &
+    call read_config(this%config_file, this%settings_case, this%settings_solver, &
                      bc_ids, bc_properties)
-    call grid%init(imx, jmx, kmx, lengths)
+    
+    call get_mesh_from_file(this%settings_case%grid_file_name, imx, jmx, kmx, lengths, xyz)
+    !座標配列が割り当てられているかどうかで分岐する.
+    if ( allocated(xyz) ) then
+        allocate(rectilinear_mesh_t :: grid)
+        call grid%init(imx, jmx, kmx, xyz)
+        this%is_equil_mesh = .false.
+    else
+        allocate(equil_mesh_t :: grid)
+        call grid%init(imx, jmx, kmx, lengths)
+    end if
+
     call set_bc_type(this%bc_types, bc_ids, bc_properties, grid%get_extents())
-    call fld%init(imx, jmx, kmx, this%settings_case%u_ic, this%settings_case%p_ref)
+    call fld%init(imx, jmx, kmx, this%settings_case%u_ic, this%settings_case%p_ref, &
+                  this%settings_case%reynolds_number, this%settings_case%body_force)
 
     call this%add_on_pre_process(grid, fld)
     
@@ -134,7 +159,7 @@ end subroutine
 subroutine add_on_pre_process(this, grid, fld)
     !!追加で初期状態を管理したい場合に呼び出す.
     class(case_common_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(inout) :: grid
+    class(equil_mesh_t),intent(inout) :: grid
     type(fluid_field_t),intent(inout) :: fld
 
     print "('Add-On process is being called from **case_common_t**')"
@@ -143,7 +168,7 @@ end subroutine
 subroutine phase_post_process(this, grid, fld)
     !!現時間段階の計算が終わった後に呼び出される. 
     class(case_common_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
 
     print "('post process is being called from **case_common_t** ')"
@@ -156,19 +181,20 @@ subroutine phase_writeout(this, grid, fld, nstep)
     !!@note 現状, 書き出しサブルーチンは本モジュールのプライベートルーチンとなっている.
     !!@todo 書き出しサブルーチンの隔離.
     class(case_common_t),intent(in) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
     integer(ip),intent(in) :: nstep
     ! character(:),allocatable :: fname
     
-    call writeout_(grid, fld, this%outdir_//"/"//"result_", nstep)
+    call writeout_(this, grid, fld, this%outdir_//"/"//"result_", nstep)
 
 end subroutine
 
-subroutine writeout_(grid, fld, basename, current_step)
+subroutine writeout_(this, grid, fld, basename, current_step)
     !!データを書き出す. フォーマットはvtkファイルとなっている.
-    !!@note データ節約のため格子座標データを必要としないvtk structured points フォーマットを使用している.
-    type(rectilinear_mesh_t),intent(in) :: grid
+    !!@note データ節約のため等間隔メッシュの場合格子座標データを必要としないvtk structured points フォーマットを使用している.
+    class(case_common_t),intent(in) :: this
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
     character(*),intent(in) :: basename
     integer(ip),intent(in) :: current_step
@@ -182,7 +208,12 @@ subroutine writeout_(grid, fld, basename, current_step)
     holders(2)%name = "Pressure"
     call holders(2)%register_scalar(fld%pressure, [2,2,2], grid%get_extents())
 
-    call writeout_single_vtk_str_points(basename, current_step, grid%get_extents(), [real(dp) :: 0, 0, 0], grid%dx, holders)
+    if ( this%uses_an_equil_mesh() ) then
+        call writeout_single_vtk_str_points(basename, current_step, grid%get_extents(), & 
+             [real(dp) :: 0, 0, 0], grid%get_equil_dx(), holders)
+    else
+        call writeout_single_vtk_recti_grid(basename, current_step, grid%get_extents(), grid%rp, holders=holders)
+    end if
     
 end subroutine
 
@@ -191,28 +222,30 @@ subroutine check_flow_field(this, grid, fld)
     !!現段階の流れ場計算結果の確認.
     !!@todo オーバーライド属性の検討. モニタできることは決まっているので不要? check_resultをパブリックにしておけば十分か.
     class(case_common_t),intent(in) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
 
     integer(ip) extents(3)
 
     extents(:) = grid%get_extents()
     !check conservation law
-    call check_result(extents(1), extents(2), extents(3), grid%ds, grid%dv, &
+    call check_result(extents(1), extents(2), extents(3), grid%dsx, grid%dsy, grid%dsz, grid%dv, &
                       fld%velocity, fld%pressure)    
 
 end subroutine
 
-subroutine check_result(imx, jmx, kmx, ds, dv, v, p)
+subroutine check_result(imx, jmx, kmx, dsi, dsj, dsk, dv, v, p)
     !!速度, 圧力の値域, および保存性のチェック.
     implicit none
     integer(IP) imx, jmx, kmx
-    real(DP) ds(3), dv
+    real(DP),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:)
+    real(DP),intent(in) :: dv(2:,2:,2:)
     real(DP),intent(in) :: v(:,:,:,:), p(:,:,:)
     
     integer(IP) i, j, k
 
     real(DP) surf_q(6), div_u_c, uf(6)
+    real(dp) ds(3)
     
     print "('***checking current result***')"
 
@@ -225,6 +258,7 @@ subroutine check_result(imx, jmx, kmx, ds, dv, v, p)
     print "(':-- SURFACE FLOW --:')" !境界面の流束積分. 
     do k = 2, kmx
     do j = 2, jmx
+        ds(1) = dsi(j,k)
         surf_q(1) = surf_q(1) + 0.5_dp*(v(1,2,j,k) + v(1,1,j,k))*ds(1)
         surf_q(2) = surf_q(2) + 0.5_dp*(v(1,imx,j,k) + v(1,imx+1,j,k))*ds(1)
     end do    
@@ -232,6 +266,7 @@ subroutine check_result(imx, jmx, kmx, ds, dv, v, p)
 
     do k = 2, kmx
     do i = 2, imx
+        ds(2) = dsj(i,k)
         surf_q(3) = surf_q(3) + 0.5_dp*(v(2,i,1,k) + v(2,i,2,k))*ds(2)
         surf_q(4) = surf_q(4) + 0.5_dp*(v(2,i,jmx,k) + v(2,i,jmx+1,k))*ds(2)
     end do    
@@ -239,6 +274,7 @@ subroutine check_result(imx, jmx, kmx, ds, dv, v, p)
 
     do j = 2, jmx
     do i = 2, imx
+        ds(3) = dsk(i,j)
         surf_q(5) = surf_q(5) + 0.5_dp*(v(3,i,j,1) + v(3,i,j,2))*ds(3)
         surf_q(6) = surf_q(6) + 0.5_dp*(v(3,i,j,kmx) + v(3,i,j,kmx+1))*ds(3)
     end do    
@@ -254,6 +290,9 @@ subroutine check_result(imx, jmx, kmx, ds, dv, v, p)
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
+        ds(1) = dsi(j,k)
+        ds(2) = dsj(i,j)
+        ds(3) = dsk(i,k)
         uf(1) = -0.5_dp*(v(1,i-1,j  ,k  ) + v(1,i  ,j  ,k  ))*ds(1)
         uf(2) =  0.5_dp*(v(1,i  ,j  ,k  ) + v(1,i+1,j  ,k  ))*ds(1)
         uf(3) = -0.5_dp*(v(2,i  ,j-1,k  ) + v(2,i  ,j  ,k  ))*ds(2)
@@ -273,11 +312,11 @@ subroutine process_diverged(this, grid, fld, current_step)
     !!計算が発散したときの処理. 
     !!@note オーバーライド不可.
     class(case_common_t),intent(in) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
     integer(ip),intent(in) :: current_step
 
-    call writeout_(grid, fld, this%outdir_//"/"//"diverged_", current_step)
+    call writeout_(this, grid, fld, this%outdir_//"/"//"diverged_", current_step)
 end subroutine
     
 end module case_common_m

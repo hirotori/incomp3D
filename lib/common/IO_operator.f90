@@ -1,4 +1,5 @@
 module IO_operator_m
+    use,intrinsic :: iso_fortran_env, only : int32, real64
     implicit none
     
 contains
@@ -77,6 +78,28 @@ logical function file_exists(path) result(f_exists)
     inquire(file=path, exist=f_exists)
 
 end function
+
+!>ファイル名と対応する装置番号を返す．
+!>ファイルが存在しない場合は新しく装置を開く．
+function get_unit_number(filename) result(unit_number)
+    implicit none
+    character(*), intent(in) :: filename
+        !! ファイル名
+    integer(int32) :: unit_number
+        !! 戻り値
+        !! ファイル名に紐付いた装置番号
+
+    logical :: is_unit_opened
+
+    ! 引数で指定したファイル名のファイルが，装置として開かれているかを問い合わせる
+    inquire (file=filename, opened=is_unit_opened, number=unit_number)
+
+    ! 開かれていたらunit_numberが取得されているのでreturnする
+    if (is_unit_opened) return
+
+    ! 開かれていなかったらファイルを開き，その装置番号を返す
+    open (newunit=unit_number, file=filename)
+end function get_unit_number
 
 logical function open_as_binary(unit, path, access, big_endian) result(opened)
     !!ファイルをバイナリで開く. 

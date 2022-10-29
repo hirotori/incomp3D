@@ -8,16 +8,17 @@ add_library(incomp3d_util STATIC
  abstract_legacy_vtk_writer.f90
  vtk_field_data.f90
  vtk_structured_points_writer.f90
+ vtk_rectilinear_grid_writer.f90
 )
 
 if(CMAKE_Fortran_COMPILER_ID MATCHES Intel)
     target_compile_options(incomp3d_util PRIVATE
-        $<$<CONFIG:Debug>:-O0 -warn all -check all -traceback>
-        $<$<CONFIG:Release>:-O2 -fPIC>
+        $<$<CONFIG:Debug>:-O0 -warn all -check all -traceback -fpp>
+        $<$<CONFIG:Release>:-O2 -fpp>
     )
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES GNU)
     target_compile_options(incomp3d_util PRIVATE
-        $<$<CONFIG:Debug>: -O0 -Wall -fcheck=all -fbacktrace>
-        $<$<CONFIG:Release>: -O2>
+        $<$<CONFIG:Debug>: -O0 -Wall -fcheck=all -fbacktrace -cpp>
+        $<$<CONFIG:Release>: -O2 -cpp>
     )
 endif()

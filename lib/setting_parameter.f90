@@ -5,36 +5,37 @@ module setting_parameter_m
     implicit none
     private
 
-    character(*),parameter :: current_file_version = "1.1"
+    character(*),parameter :: current_file_version = "1.3"
     type slv_setting
         !!poisson方程式のソルバ設定.
-        real(DP) tolerance
+        real(DP) :: tolerance = 0.001_dp
         !!反復終了のための残差の閾値.
-        integer(IP) itr_max
+        integer(IP) :: itr_max = 1000
         !!反復回数上限
-        real(DP) relax_coeff
+        real(DP) :: relax_coeff = 1.1_dp
         !!加速係数.
-        character(2) :: conv_type
-        integer(ip) :: diff_type
-        logical :: correct_face_flux
+        character(2) :: conv_type = "cd"
+        integer(ip) :: diff_type = 1
+        logical :: correct_face_flux = .true.
     end type
 
     type case_setting
-        integer(ip) nstart, nend, nwrite
-        real(dp) dt
-        real(dp) p_ref
-        real(dp) u_ic(3)
-        real(dp) body_force(3)
-        real(dp) reynolds_number
+        character(128),allocatable :: grid_file_name
+        integer(ip) :: nstart = 1
+        integer(ip) :: nend = 10000
+        integer(ip) :: nwrite = 100
+        real(dp) :: dt = 0.001_dp
+        real(dp) :: p_ref = 0.0_dp
+        real(dp) :: u_ic(3) = 0.0_dp
+        real(dp) :: body_force(3) = 0.0_dp
+        real(dp) :: reynolds_number = 100.0_dp
     end type
     
     public slv_setting, case_setting, read_config
 
 contains
-subroutine read_config(fname, imx, jmx, kmx, l_xyz, c_setting, s_setting, bc_ids, bc_properties)
+subroutine read_config(fname, c_setting, s_setting, bc_ids, bc_properties)
     character(*),intent(in) :: fname
-    integer(IP),intent(out) :: imx, jmx, kmx
-    real(DP),intent(out) :: l_xyz(3)
     type(case_setting),intent(out) :: c_setting
     type(slv_setting),intent(out) :: s_setting
     integer(ip),intent(out) :: bc_ids(2,6)
@@ -43,18 +44,15 @@ subroutine read_config(fname, imx, jmx, kmx, l_xyz, c_setting, s_setting, bc_ids
 
 
 
-    call read_config_core(fname, imx, jmx, kmx, l_xyz, &
-                          c_setting, s_setting, &
+    call read_config_core(fname, c_setting, s_setting, &
                           bc_ids, bc_properties)
 
     !TODO リファクタリング. namelistにして各構造体は別ファイル扱いとする??
 
 end subroutine
 
-subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_ids, bc_properties)
+subroutine read_config_core(fname, setting_c ,setting, bc_ids, bc_properties)
     character(*),intent(in) :: fname
-    integer(IP),intent(out) :: imx, jmx, kmx
-    real(DP),intent(out) :: l_xyz(3)
     type(case_setting),intent(out) :: setting_c
     type(slv_setting),intent(out) :: setting
     integer(ip),intent(out) :: bc_ids(2,6)
@@ -81,8 +79,7 @@ subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_
             error stop
         end if
     end block
-    read(unit,*,err=99) imx, jmx, kmx 
-    read(unit,*,err=99) l_xyz(:)      
+    read(unit,*,err=99) tmp_ ; setting_c%grid_file_name = trim(adjustl(tmp_))
     read(unit,*,err=99) setting_c%nstart, setting_c%nend, setting_c%nwrite
     read(unit,*,err=99) setting_c%dt
     read(unit,*,err=99) setting_c%reynolds_number
@@ -98,8 +95,6 @@ subroutine read_config_core(fname, imx, jmx, kmx, l_xyz, setting_c ,setting, bc_
     read(unit,*,err=99) tmp_ ; setting%conv_type = trim(adjustl(tmp_))
     read(unit,*,err=99) setting%diff_type
     read(unit,*,err=99) setting%correct_face_flux
-    print "('extent : (', i0, ', ', i0, ', ', i0, ') ')", imx, jmx, kmx
-    print "('Length : (', g0.2, ', ', g0.2, ', ', g0.2, ') ')", l_xyz(:)
     print "('time step : ',i0, '<= n <=', i0)", setting_c%nstart, setting_c%nend
     print "('delta t   : ',g0.5)", setting_c%dt
     print "('Re        : ',g0)", setting_c%reynolds_number
@@ -127,8 +122,7 @@ subroutine create_sample_()
     character(*),parameter :: dummy_flag = "T"
     open(newunit = unit, file = "config_sample.txt", status = "replace")
         write(unit, "(A, 3x, '! current config file version.')") current_file_version
-        write(unit, "(3(i0,1x), ' !grid points (imax,jmax,kmax)')") 21, 21, 21
-        write(unit, "(3(g0.3,1x), ' !length (x,y,z)     ')") 10.0d0, 4.0d0, 2.0d0 
+        write(unit, "(A, 3x, '! grid file name. extention must be "".msh"".')") "path/to/your/grid_file_name.msh"
         write(unit, "(3(i0,1x), ' !time step (start,end,write_interval')") 0, 1000, 100 
         write(unit, "(g0.3      , ' !time spacing')") 0.001d0         
         write(unit, "(g0.2      , ' !Reynolds Number')") 100.0d0

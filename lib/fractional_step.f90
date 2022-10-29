@@ -8,8 +8,12 @@ module fractional_step_m
     implicit none
     private
     type :: mat_a
-        !!線形方程式の係数.セルから見て順に東, 西, 北, 南, 上, 下側の係数
-        real(DP),allocatable :: ae, aw, an, as, at, ab, ap
+        !!線形方程式の係数.
+        !!@todo データの持ち方. 
+        real(DP),allocatable :: a_nb(:,:,:,:)
+            !!副対角成分. 1:-x,2:+x,3:-y,4:+y,5:-z,6:+z
+        real(dp),allocatable :: a_p(:,:,:)
+            !!主対角成分
     end type
 
     type solver_fs
@@ -42,7 +46,7 @@ subroutine init_solver(this, fld, grd, settings_slv, setting_case)
     !!ソルバを初期化する.
     class(solver_fs),intent(inout) :: this
     type(fluid_field_t),intent(in) :: fld
-    type(rectilinear_mesh_t),intent(in) :: grd
+    class(equil_mesh_t),intent(in) :: grd
     type(slv_setting),intent(in) :: settings_slv
     type(case_setting),intent(in) :: setting_case
 
@@ -54,11 +58,18 @@ subroutine slvr_init_common(this, fld, grd, settings_slv, setting_case)
     !!ソルバの初期化を行う. 圧力の係数行列設定, 移流/拡散スキームの設定.
     class(solver_fs),intent(inout) :: this
     type(fluid_field_t),intent(in) :: fld
-    type(rectilinear_mesh_t),intent(in) :: grd
+    class(equil_mesh_t),intent(in) :: grd
     type(slv_setting),intent(in) :: settings_slv
     type(case_setting),intent(in) :: setting_case
 
-    call set_matrix_p(this%coeffs_p, grd%ds, grd%dv) !係数行列は1回だけ更新すれば良い.
+    integer(ip) imx, jmx, kmx
+
+    call grd%get_extents_sub(imx, jmx, kmx)
+    allocate(this%coeffs_p%a_nb(1:6,2:imx,2:jmx,2:kmx))
+    allocate(this%coeffs_p%a_p(2:imx,2:jmx,2:kmx))
+
+    !係数行列は1回だけ更新すれば良い.
+    call set_matrix_p(this%coeffs_p, grd%dsx, grd%dsy, grd%dsz, grd%dv, imx, jmx, kmx) 
     this%convec_type = settings_slv%conv_type
     this%diffus_type = settings_slv%diff_type
     this%correct_face_flux = settings_slv%correct_face_flux
@@ -80,7 +91,7 @@ end subroutine
 subroutine init_for_parallel_computing(this, grd)
     !! Poisson方程式を並列化して解く場合に呼び出す.
     class(solver_fs),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(in) :: grd
+    class(equil_mesh_t),intent(in) :: grd
     integer(ip) icmx
     integer(ip) i, j, k, imx, jmx, kmx, nr, nb
     
@@ -144,7 +155,7 @@ subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
     !!ループ前の処理. 流体クラスに境界条件を適用し, フラックスを初期値で更新しておく.
     !!@note 内部の速度と圧力は事前に外部で初期化されている. ここでは仮想セルへの更新が行われる.
     class(solver_fs),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(in) :: grd
+    class(equil_mesh_t),intent(in) :: grd
     type(fluid_field_t),intent(inout) :: fld
     type(case_setting),intent(in) :: settings_case
     type(bc_t),intent(in) :: bc_types(:)
@@ -153,44 +164,35 @@ subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
 
     extents = grd%get_extents()
 
-    call boundary_condition_velocity(extents, fld%velocity, grd%dx, bc_types)
-    call boundary_condition_pressure(extents, fld%pressure, grd%dx, bc_types)
+    call boundary_condition_velocity(extents, fld%velocity, bc_types)
+    call boundary_condition_pressure(extents, fld%pressure, bc_types)
     
-    !!ループ前の初期値で面流束を求めておく.
+    !>ループ前の初期値で面流束を求めておく.
     call cal_face_velocity(extents(1), extents(2), extents(3), fld%velocity, fld%mflux_i, fld%mflux_j, fld%mflux_k)
     if ( this%correct_face_flux ) then
-        !!面流束を圧力で補正する設定の場合はそれに倣う.
+        !>面流束を圧力で補正する設定の場合はそれに倣う.
         
         !!@note 
         !! 基本的に初期値は一様で与えることが多い. その場合は無意味であることに注意.
         !! taylor-green渦のシミュレーションなど初期値を与える場合には効果があるかもしれない.
         !!@endnote
         call fs_correction_face_flux(extents(1), extents(2), extents(3), &
-             grd%ds, grd%dv, settings_case%dt, fld%pressure, fld%mflux_i, fld%mflux_j, fld%mflux_k)
+             grd%dsx, grd%dsy, grd%dsz, grd%dv, settings_case%dt, fld%pressure, fld%mflux_i, fld%mflux_j, fld%mflux_k)
     end if
 
 end subroutine
     
 
-subroutine predict_pseudo_velocity(this, grid, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
+subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
     !!中間速度を計算する.
+    !!@note 初期状態から計算の場合は, ループ開始前に速度の初期値で面に垂直な流速成分を更新しておく必要がある.
     class(solver_fs),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
+    type(fluid_field_t),intent(inout) :: fluid
     real(DP),intent(in) :: del_t
         !!時間刻み
-    real(DP),intent(in) :: re
-        !!レイノルズ数
-    real(DP),intent(in) :: force(3)
-        !!体積力
     real(DP),intent(in) :: v0(:,:,:,:)
         !!既知時間段階の速度
-    real(DP),intent(out) :: v(:,:,:,:)
-        !!更新される速度(中間段階)
-    real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
-        !!面に垂直な流速成分. 
-        !!@note 初期状態から計算の場合は, ループ開始前に速度の初期値で更新しておく必要がある.
-    real(dp),intent(in) :: dudr(:,:,:,:,:)
-        !!速度勾配テンソル.
     type(bc_t),intent(in) :: bc_types(:)
     
     integer(ip) imx, jmx, kmx, i, j, k
@@ -205,14 +207,15 @@ subroutine predict_pseudo_velocity(this, grid, del_t, re, force, v0, v, mi, mj, 
     ! call fs_prediction_v2(imx, jmx, kmx, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk)
 
     !フラックスを作ってから後で右辺を計算する. メモリ量に不安がある場合は今まで通り上の方法で. 
-    call calc_convective_and_diffusive_flux(this, grid%get_extents(), grid%ds, grid%dv, grid%dx, re, v0, mi, mj, mk, dudr, conv, diff)
+    !!@todo 境界条件を組み込むかどうか.
+    call calc_convective_and_diffusive_flux(this, grid, fluid, v0, conv, diff)
 
-    rei = 1.0_dp/re
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
-       
-        v(:,i,j,k) = v0(:,i,j,k) - del_t*(conv(:,i,j,k) - rei*diff(:,i,j,k) - force(:)*grid%dv)/grid%dv
+        rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
+        fluid%velocity(:,i,j,k) = v0(:,i,j,k) - & 
+                               del_t*(conv(:,i,j,k) - rei*diff(:,i,j,k) - fluid%vol_force(:)*grid%dv(i,j,k))/grid%dv(i,j,k)
 
     end do
     end do
@@ -222,14 +225,12 @@ subroutine predict_pseudo_velocity(this, grid, del_t, re, force, v0, v, mi, mj, 
 
 end subroutine
 
-subroutine calc_corrected_velocity(this, grid, del_t, mi, mj, mk, p, v,setting, p_ic, bc_types, diverged)
+subroutine calc_corrected_velocity(this, grid, fluid, del_t, setting, p_ic, bc_types, diverged)
     !!圧力Poisson方程式を解いて速度とフラックスを修正する.
     class(solver_fs),intent(in) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
+    type(fluid_field_t),intent(inout) :: fluid
     real(DP),intent(in) :: del_t
-    real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
-    real(DP),intent(inout) :: p(:,:,:)
-    real(DP),intent(inout) :: v(:,:,:,:)
     type(slv_setting),intent(in) :: setting
     real(DP),intent(in) :: p_ic
     type(bc_t),intent(in) :: bc_types(6)
@@ -242,28 +243,30 @@ subroutine calc_corrected_velocity(this, grid, del_t, mi, mj, mk, p, v,setting, 
 
     allocate(div_u_star(2:imx,2:jmx,2:kmx))
 
-    call cal_face_velocity(imx, jmx, kmx, v, mi, mj, mk)
+    call cal_face_velocity(imx, jmx, kmx, fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
 
-    call calc_divergence_of_pseudo_velocity(imx, jmx, kmx, grid%ds, mi, mj, mk, del_t, div_u_star)
+    call calc_divergence_of_pseudo_velocity(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, &
+        fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, del_t, div_u_star)
 
 #ifdef _OPENMP
-    call fs_poisson_parallel(imx, jmx, kmx, grid%dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged, &
+    call fs_poisson_parallel(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, setting, p_ic, bc_types, diverged, &
     this%c_red, this%c_black)
 #else
-    call fs_poisson_v2(imx, jmx, kmx, grid%dx, this%coeffs_p, div_u_star, p, setting, p_ic, bc_types, diverged)
+    call fs_poisson_v2(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, setting, p_ic, bc_types, diverged)
 #endif
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
 
-    call fs_correction_v2(imx, jmx, kmx, grid%ds, grid%dv, del_t, p, v)
+    call fs_correction_v2(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, grid%dv, del_t, fluid%pressure, fluid%velocity)
 
     !面の流束の速度補正. 
     if ( this%correct_face_flux ) then
-        call fs_correction_face_flux(imx, jmx, kmx, grid%ds, grid%dv, del_t, p, mi, mj, mk)
+        call fs_correction_face_flux(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, grid%dv, del_t, &
+                fluid%pressure, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
     else
         !圧力で補正しない場合. mi, mj, mkは単に速度の線形補間として取り扱う. 
         !その場合ここで更新する必要がある. vはこの時点で新しい段階の速度なので, mi, mj, mkも新しい速度の線形補間となる.
-        call cal_face_velocity(imx, jmx, kmx, v, mi, mj, mk)
+        call cal_face_velocity(imx, jmx, kmx, fluid%velocity, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
     end if
 
 end subroutine
@@ -273,6 +276,7 @@ end subroutine
 
 subroutine cal_face_velocity(imx, jmx, kmx, v, mi, mj, mk)
     !!部分段階速度から面の部分段階速度へ内挿する.
+    !!@note 補間法の見直し。
     implicit none
     integer(ip),intent(in) :: imx, jmx, kmx
     real(DP),intent(in) :: v(:,:,:,:)
@@ -363,22 +367,14 @@ subroutine fs_prediction_v2(imx, jmx, kmx, ds, dv, dx, del_t, re, force, v0, v, 
 
 end subroutine
 
-subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0, mi, mj, mk, dudr, convec, diff)
+subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, diff)
     !!右辺を計算するのに必要な移流と拡散流束を計算する.
     !!@note 陰解法に必要な右辺項は外部で計算する.
     class(solver_fs),intent(in) :: this
-    integer(IP),intent(in) :: extents(3)
-        !!内部セルの各方向の最大番号.
-    real(DP),intent(in) :: ds(3), dv, dx(3)
-        !!面積, 体積, 格子幅
-    real(DP),intent(in) :: re
-        !!レイノルズ数
+    class(equil_mesh_t),intent(in) :: grid
+    type(fluid_field_t),intent(in) :: fluid
     real(DP),intent(in) :: v0(:,:,:,:)
         !!既知段階速度.
-    real(DP),intent(in) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
-        !!面流束.
-    real(dp),intent(in) :: dudr(:,:,:,:,:)
-        !!速度勾配テンソル
     real(dp),intent(out) :: convec(:,2:,2:,2:)
         !!移流流束. 空間内部のみに存在するので, インデックスは2から始まる.
     real(dp),intent(out) :: diff(:,2:,2:,2:)
@@ -389,25 +385,27 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
 
 
     integer(IP) i, j, k, ld, imx, jmx, kmx
+    real(dp) ds(3)
 
     ld = this%diffus_type
 
-    imx = extents(1)
-    jmx = extents(2)
-    kmx = extents(3)
+    call grid%get_extents_sub(imx, jmx, kmx)
 
-    rei = 1.0_dp/re
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
+        rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
+        ds(1) = grid%dsx(j,k)
+        ds(2) = grid%dsy(i,k)
+        ds(3) = grid%dsz(i,j)
         !----convection----
         !::::mass flux
-        me =  mi(i  ,j  ,k  )*ds(1)
-        mw = -mi(i-1,j  ,k  )*ds(1)
-        mn =  mj(i  ,j  ,k  )*ds(2)
-        ms = -mj(i  ,j-1,k  )*ds(2)
-        mt =  mk(i  ,j  ,k  )*ds(3)
-        mb = -mk(i  ,j  ,k-1)*ds(3)
+        me =  fluid%mflux_i(i  ,j  ,k  )*ds(1)
+        mw = -fluid%mflux_i(i-1,j  ,k  )*ds(1)
+        mn =  fluid%mflux_j(i  ,j  ,k  )*ds(2)
+        ms = -fluid%mflux_j(i  ,j-1,k  )*ds(2)
+        mt =  fluid%mflux_k(i  ,j  ,k  )*ds(3)
+        mb = -fluid%mflux_k(i  ,j  ,k-1)*ds(3)
 
         select case(this%convec_type) !計算効率的には良くないが, そこまで効率を求めていないので
         case("ud")
@@ -420,6 +418,10 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
                                 + 0.5_dp*(mb - abs(mb))*v0(:,i  ,j  ,k-1) + 0.5_dp*(mb + abs(mb))*v0(:,i  ,j  ,k  )
         case("cd")
             !::::2nd order central difference
+            !!@note 
+            !! 中心差分については, 面積分を2次精度とするためには面の重心で評価しなければならない.
+            !! 単純な算術平均は面積分の精度が落ちる. 
+            !!@endnote
             convec(:,i,j,k) = 0.5_dp*mw*(v0(:,i-1,j  ,k  ) + v0(:,i,j,k)) + 0.5_dp*me*(v0(:,i,j,k) + v0(:,i+1,j  ,k  )) &
                                  + 0.5_dp*ms*(v0(:,i  ,j-1,k  ) + v0(:,i,j,k)) + 0.5_dp*mn*(v0(:,i,j,k) + v0(:,i,  j+1,k  )) &
                                  + 0.5_dp*mb*(v0(:,i  ,j  ,k-1) + v0(:,i,j,k)) + 0.5_dp*mt*(v0(:,i,j,k) + v0(:,i,  j  ,k+1))
@@ -431,20 +433,21 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
         !----diffusion----
         !::::2nd order central
         if ( ld == 1 ) then
-            dif_w(:) = (  v0(:,i-1,j  ,k  ) - v0(:,i  ,j  ,k  ))/dx(1)
-            dif_e(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i+1,j  ,k  ))/dx(1)
-            dif_s(:) = (  v0(:,i  ,j-1,k  ) - v0(:,i  ,j  ,k  ))/dx(2)
-            dif_n(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j+1,k  ))/dx(2)
-            dif_b(:) = (  v0(:,i  ,j  ,k-1) - v0(:,i  ,j  ,k  ))/dx(3)
-            dif_t(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j  ,k+1))/dx(3)                
+            dif_w(:) = (  v0(:,i-1,j  ,k  ) - v0(:,i  ,j  ,k  ))/(-grid%rc(1,i-1,j  ,k  ) + grid%rc(1,i  ,j  ,k  ))
+            dif_e(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i+1,j  ,k  ))/(-grid%rc(1,i  ,j  ,k  ) + grid%rc(1,i+1,j  ,k  ))
+            dif_s(:) = (  v0(:,i  ,j-1,k  ) - v0(:,i  ,j  ,k  ))/(-grid%rc(2,i  ,j-1,k  ) + grid%rc(2,i  ,j  ,k  ))
+            dif_n(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j+1,k  ))/(-grid%rc(2,i  ,j  ,k  ) + grid%rc(2,i  ,j+1,k  ))
+            dif_b(:) = (  v0(:,i  ,j  ,k-1) - v0(:,i  ,j  ,k  ))/(-grid%rc(3,i  ,j  ,k-1) + grid%rc(3,i  ,j  ,k  ))
+            dif_t(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j  ,k+1))/(-grid%rc(3,i  ,j  ,k  ) + grid%rc(3,i  ,j  ,k+1))
+
         else if ( ld == 2 ) then
             !面勾配*法線を計算する. セル勾配から面へ内挿する. 境界では片側差分となっている.
-            dif_w(:) = -(dudr(:,1,i-1,j  ,k  ) + dudr(:,1,i  ,j  ,k  ))*0.5_dp
-            dif_e(:) =  (dudr(:,1,i  ,j  ,k  ) + dudr(:,1,i+1,j  ,k  ))*0.5_dp
-            dif_s(:) = -(dudr(:,2,i  ,j-1,k  ) + dudr(:,2,i  ,j  ,k  ))*0.5_dp
-            dif_n(:) =  (dudr(:,2,i  ,j  ,k  ) + dudr(:,2,i  ,j+1,k  ))*0.5_dp
-            dif_b(:) = -(dudr(:,3,i  ,j  ,k-1) + dudr(:,3,i  ,j  ,k  ))*0.5_dp
-            dif_t(:) =  (dudr(:,3,i  ,j  ,k  ) + dudr(:,3,i  ,j  ,k+1))*0.5_dp
+            dif_w(:) = -(fluid%dudr(:,1,i-1,j  ,k  ) + fluid%dudr(:,1,i  ,j  ,k  ))*0.5_dp
+            dif_e(:) =  (fluid%dudr(:,1,i  ,j  ,k  ) + fluid%dudr(:,1,i+1,j  ,k  ))*0.5_dp
+            dif_s(:) = -(fluid%dudr(:,2,i  ,j-1,k  ) + fluid%dudr(:,2,i  ,j  ,k  ))*0.5_dp
+            dif_n(:) =  (fluid%dudr(:,2,i  ,j  ,k  ) + fluid%dudr(:,2,i  ,j+1,k  ))*0.5_dp
+            dif_b(:) = -(fluid%dudr(:,3,i  ,j  ,k-1) + fluid%dudr(:,3,i  ,j  ,k  ))*0.5_dp
+            dif_t(:) =  (fluid%dudr(:,3,i  ,j  ,k  ) + fluid%dudr(:,3,i  ,j  ,k+1))*0.5_dp
 
         end if
 
@@ -459,31 +462,42 @@ subroutine calc_convective_and_diffusive_flux(this, extents, ds, dv, dx, re, v0,
 
 end subroutine
 
-subroutine set_matrix_p(coeffs, ds, dv)!, imx, jmx, kmx)
+subroutine set_matrix_p(coeffs, dsi, dsj, dsk, dv, imx, jmx, kmx)
     !!圧力Poisson方程式の係数行列の設定.
     type(mat_a),intent(out) :: coeffs
-    real(DP),intent(in) :: ds(3), dv
-    ! integer(IP),intent(in) :: imx, jmx, kmx
+    real(DP),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:)
+    real(DP),intent(in) :: dv(2:,2:,2:)
+    integer(IP),intent(in) :: imx, jmx, kmx
 
-    ! integer(IP) ic
+    integer(IP) i, j, k
+    real(dp) dv_(3), ds_(3)
 
-    coeffs%ae = ds(1)*ds(1)/dv
-    coeffs%aw = ds(1)*ds(1)/dv
-    
-    coeffs%an = ds(2)*ds(2)/dv
-    coeffs%as = ds(2)*ds(2)/dv
-    
-    coeffs%at = ds(3)*ds(3)/dv
-    coeffs%ab = ds(3)*ds(3)/dv
+    do k = 2, kmx
+    do j = 2, jmx
+    do i = 2, imx
+        ds_(1) = dsi(j,k)
+        ds_(2) = dsj(i,k)
+        ds_(3) = dsk(i,j)
+        dv_(1) = 0.5_dp*(dv(i,j,k) + dv(i+1,j,k))
+        dv_(2) = 0.5_dp*(dv(i,j,k) + dv(i,j+1,k))
+        dv_(3) = 0.5_dp*(dv(i,j,k) + dv(i,j,k+1))
+        
+        coeffs%a_nb(1:2,i,j,k) = ds_(1)*ds_(1)/dv_(1)
+        coeffs%a_nb(3:4,i,j,k) = ds_(2)*ds_(2)/dv_(2)
+        coeffs%a_nb(5:6,i,j,k) = ds_(3)*ds_(3)/dv_(3)
+        
+        coeffs%a_p(i,j,k) = - 2.0_dp*(ds_(1)*ds_(1)/dv_(1) + ds_(2)*ds_(2)/dv_(2) + ds_(3)*ds_(3)/dv_(3))
 
-    coeffs%ap = - 2.0_dp*(ds(1)*ds(1) + ds(2)*ds(2) + ds(3)*ds(3))/dv
+    end do
+    end do        
+    end do
 
 end subroutine
 
-subroutine calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, dt, source_b)
+subroutine calc_divergence_of_pseudo_velocity(imx, jmx, kmx, dsi, dsj, dsk, mi, mj, mk, dt, source_b)
     !!圧力Poisson方程式の右辺(中間速度の発散)を計算する.
     integer(ip),intent(in) :: imx, jmx, kmx
-    real(dp),intent(in) :: ds(3)
+    real(dp),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:) 
     real(dp),intent(in) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
         !!1st stepの後に計算された面の速度. 中間段階速度の面への線形内挿により計算されている.
     real(dp),intent(in) :: dt
@@ -491,11 +505,14 @@ subroutine calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, dt,
         !!圧力Poisson方程式の右辺.
 
     integer(ip) i, j, k
-    real(DP) me, mw, mn, ms, mt, mb
+    real(DP) me, mw, mn, ms, mt, mb, ds(3)
 
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
+        ds(1) = dsi(j,k)
+        ds(2) = dsj(i,k)
+        ds(3) = dsk(i,j)
         me = mi(i  ,j  ,k  )*ds(1)
         mw = mi(i-1,j  ,k  )*ds(1)
         mn = mj(i  ,j  ,k  )*ds(2)
@@ -510,11 +527,11 @@ subroutine calc_divergence_of_pseudo_velocity(imx, jmx, kmx, ds, mi, mj, mk, dt,
 
 end subroutine
 
-subroutine fs_poisson_v2(imx, jmx, kmx, dx, coeffs, source_b, p, setting, p_ic, bc_types, diverged)
+subroutine fs_poisson_v2(imx, jmx, kmx, coeffs, source_b, p, setting, p_ic, bc_types, diverged)
     !!gauss-seidel法により圧力を求める.
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     integer(IP),intent(in) :: imx, jmx, kmx
-    real(DP),intent(in) :: dx(3)
+    ! real(DP),intent(in) :: dx(3)
     type(mat_a),intent(in) :: coeffs
     real(DP),intent(in) :: source_b(2:,2:,2:)
     real(DP),intent(inout) :: p(:,:,:)
@@ -555,14 +572,15 @@ subroutine fs_poisson_v2(imx, jmx, kmx, dx, coeffs, source_b, p, setting, p_ic, 
         do j = 2, jmx
         do i = 2, imx
 
-            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
-                                                        - coeffs%as*p(i  ,j-1,k  ) - coeffs%an*p(i  ,j+1,k  ) &
-                                                        - coeffs%ab*p(i  ,j  ,k-1) - coeffs%at*p(i  ,j  ,k+1))/coeffs%ap
+            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) &
+                        - coeffs%a_nb(1,i,j,k)*p(i-1,j  ,k  ) - coeffs%a_nb(2,i,j,k)*p(i+1,j  ,k  ) &
+                        - coeffs%a_nb(3,i,j,k)*p(i  ,j-1,k  ) - coeffs%a_nb(4,i,j,k)*p(i  ,j+1,k  ) &
+                        - coeffs%a_nb(5,i,j,k)*p(i  ,j  ,k-1) - coeffs%a_nb(6,i,j,k)*p(i  ,j  ,k+1))/coeffs%a_p(i,j,k)
         end do
         end do
         end do
 
-        call boundary_condition_pressure(extents_, p, dx, bc_types) !仮想セルの圧力を更新する.
+        call boundary_condition_pressure(extents_, p, bc_types) !仮想セルの圧力を更新する.
 
         !収束判定.
         resid_ = 0.0_dp
@@ -609,13 +627,13 @@ subroutine fs_poisson_v2(imx, jmx, kmx, dx, coeffs, source_b, p, setting, p_ic, 
 
 end subroutine
 
-subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, p_ic, bc_types, diverged, color_r, color_b)
+subroutine fs_poisson_parallel(imx, jmx, kmx, coeffs, source_b, p, setting, p_ic, bc_types, diverged, color_r, color_b)
     !!Red-black SOR法により圧力を求める.
     !!@note 並列化する場合に呼び出される. シングルスレッドの場合はむしろ時間がかかるので呼び出さない方が良い.
     !$ use omp_lib
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     integer(IP),intent(in) :: imx, jmx, kmx
-    real(DP),intent(in) :: dx(3)
+    ! real(DP),intent(in) :: dx(3)
     type(mat_a),intent(in) :: coeffs
     real(DP),intent(in) :: source_b(2:,2:,2:)
     real(DP),intent(inout) :: p(:,:,:)
@@ -666,9 +684,10 @@ subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, 
         !$omp do schedule(STATIC)
         do l = 1, lrmx
             i = color_r(1,l) ; j = color_r(2,l) ; k = color_r(3,l)
-            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
-                    - coeffs%as*p(i  ,j-1,k  ) - coeffs%an*p(i  ,j+1,k  ) &
-                    - coeffs%ab*p(i  ,j  ,k-1) - coeffs%at*p(i  ,j  ,k+1))/coeffs%ap
+            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) &
+                        - coeffs%a_nb(1,i,j,k)*p(i-1,j  ,k  ) - coeffs%a_nb(2,i,j,k)*p(i+1,j  ,k  ) &
+                        - coeffs%a_nb(3,i,j,k)*p(i  ,j-1,k  ) - coeffs%a_nb(4,i,j,k)*p(i  ,j+1,k  ) &
+                        - coeffs%a_nb(5,i,j,k)*p(i  ,j  ,k-1) - coeffs%a_nb(6,i,j,k)*p(i  ,j  ,k+1))/coeffs%a_p(i,j,k)
 
         end do
         !$omp end do
@@ -677,15 +696,16 @@ subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, 
         !$omp do schedule(STATIC)
         do l = 1, lbmx
             i = color_b(1,l) ; j = color_b(2,l) ; k = color_b(3,l)
-            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) - coeffs%aw*p(i-1,j  ,k  ) - coeffs%ae*p(i+1,j  ,k  ) &
-                    - coeffs%as*p(i  ,j-1,k  ) - coeffs%an*p(i  ,j+1,k  ) &
-                    - coeffs%ab*p(i  ,j  ,k-1) - coeffs%at*p(i  ,j  ,k+1))/coeffs%ap
+            p(i,j,k) = (1.0_dp - alp)*p(i,j,k) + alp*(source_b(i,j,k) &
+                        - coeffs%a_nb(1,i,j,k)*p(i-1,j  ,k  ) - coeffs%a_nb(2,i,j,k)*p(i+1,j  ,k  ) &
+                        - coeffs%a_nb(3,i,j,k)*p(i  ,j-1,k  ) - coeffs%a_nb(4,i,j,k)*p(i  ,j+1,k  ) &
+                        - coeffs%a_nb(5,i,j,k)*p(i  ,j  ,k-1) - coeffs%a_nb(6,i,j,k)*p(i  ,j  ,k+1))/coeffs%a_p(i,j,k)
 
         end do
         !$omp end do
         !$omp end parallel
 
-        call boundary_condition_pressure(extents_, p, dx, bc_types) !仮想セルの圧力を更新する.
+        call boundary_condition_pressure(extents_, p, bc_types) !仮想セルの圧力を更新する.
 
         !収束判定.
         resid_ = 0.0_dp
@@ -734,47 +754,54 @@ subroutine fs_poisson_parallel(imx, jmx, kmx, dx, coeffs, source_b, p, setting, 
 
 end subroutine
 
-subroutine fs_correction_v2(imx, jmx, kmx, ds, dv, del_t, p, v)
+subroutine fs_correction_v2(imx, jmx, kmx, dsi, dsj, dsk, dv, del_t, p, v)
     !!求めた圧力で速度を修正し, n+1段階の速度を求める.
     integer(IP),intent(in) :: imx, jmx, kmx
-    real(DP),intent(in) :: ds(3), dv
+    real(DP),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:)
+    real(DP),intent(in) :: dv(2:,2:,2:)
     real(DP),intent(in) :: del_t
     real(DP),intent(in) :: p(:,:,:)
     real(DP),intent(inout) :: v(:,:,:,:)
         !!中間段階の速度(1st step 終了後の速度).
 
     integer(IP) i, j, k
-
+    real(dp) ds_(3), dv_
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
+        ds_(1) = dsi(j,k)
+        ds_(2) = dsj(i,k)
+        ds_(3) = dsk(i,j)
+        dv_ = dv(i,j,k)
         !セル中心の速度
-        v(1,i,j,k) = v(1,i,j,k) - 0.5_dp*del_t*ds(1)*(p(i+1,j  ,k  ) - p(i-1,j  ,k  ))/dv
-        v(2,i,j,k) = v(2,i,j,k) - 0.5_dp*del_t*ds(2)*(p(i  ,j+1,k  ) - p(i  ,j-1,k  ))/dv
-        v(3,i,j,k) = v(3,i,j,k) - 0.5_dp*del_t*ds(3)*(p(i  ,j  ,k+1) - p(i  ,j  ,k-1))/dv
+        v(1,i,j,k) = v(1,i,j,k) - 0.5_dp*del_t*ds_(1)*(p(i+1,j  ,k  ) - p(i-1,j  ,k  ))/dv_
+        v(2,i,j,k) = v(2,i,j,k) - 0.5_dp*del_t*ds_(2)*(p(i  ,j+1,k  ) - p(i  ,j-1,k  ))/dv_
+        v(3,i,j,k) = v(3,i,j,k) - 0.5_dp*del_t*ds_(3)*(p(i  ,j  ,k+1) - p(i  ,j  ,k-1))/dv_
     end do
     end do
     end do
 
 end subroutine
 
-subroutine fs_correction_face_flux(imx, jmx, kmx, ds, dv, del_t, p, mi, mj, mk)
+subroutine fs_correction_face_flux(imx, jmx, kmx, dsi, dsj, dsk, dv, del_t, p, mi, mj, mk)
     !!求めた圧力で速度を修正し, n+1段階の速度を求める.
     integer(IP),intent(in) :: imx, jmx, kmx
-    real(DP),intent(in) :: ds(3), dv
+    real(DP),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:)
+    real(DP),intent(in) :: dv(2:,2:,2:)
     real(DP),intent(in) :: del_t
     real(DP),intent(in) :: p(:,:,:)
     real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
 
     integer(IP) i, j, k
-
+    real(dp) ds_
 
     !面速度 = 面に垂直な流速
     !>面の流束を圧力で修正する.
     do k = 2, kmx
     do j = 2, jmx
     do i = 1, imx
-        mi(i,j,k) = mi(i,j,k) - del_t*ds(1)*(p(i+1,j  ,k  ) - p(i  ,j  ,k  ))/dv
+        ds_ = dsi(j,k)
+        mi(i,j,k) = mi(i,j,k) - del_t*ds_*(p(i+1,j  ,k  ) - p(i  ,j  ,k  ))/dv(i,j,k)
     end do
     end do
     end do
@@ -782,7 +809,8 @@ subroutine fs_correction_face_flux(imx, jmx, kmx, ds, dv, del_t, p, mi, mj, mk)
     do k = 2, kmx
     do j = 1, jmx
     do i = 2, imx
-        mj(i,j,k) = mj(i,j,k) - del_t*ds(2)*(p(i  ,j+1,k  ) - p(i  ,j  ,k  ))/dv
+        ds_ = dsj(i,k)
+        mj(i,j,k) = mj(i,j,k) - del_t*ds_*(p(i  ,j+1,k  ) - p(i  ,j  ,k  ))/dv(i,j,k)
     end do
     end do
     end do
@@ -790,7 +818,8 @@ subroutine fs_correction_face_flux(imx, jmx, kmx, ds, dv, del_t, p, mi, mj, mk)
     do k = 1, kmx
     do j = 2, jmx
     do i = 2, imx
-        mk(i,j,k) = mk(i,j,k) - del_t*ds(3)*(p(i  ,j  ,k+1) - p(i,j  ,k  ))/dv
+        ds_ = dsk(i,j)
+        mk(i,j,k) = mk(i,j,k) - del_t*ds_*(p(i  ,j  ,k+1) - p(i,j  ,k  ))/dv(i,j,k)
     end do
     end do
     end do
