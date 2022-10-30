@@ -177,7 +177,7 @@ subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
         !! taylor-green渦のシミュレーションなど初期値を与える場合には効果があるかもしれない.
         !!@endnote
         call fs_correction_face_flux(extents(1), extents(2), extents(3), &
-             grd%dsx, grd%dsy, grd%dsz, grd%dv, settings_case%dt, fld%pressure, fld%mflux_i, fld%mflux_j, fld%mflux_k)
+             grd%dx, grd%dy, grd%dz, settings_case%dt, fld%pressure, fld%mflux_i, fld%mflux_j, fld%mflux_k)
     end if
 
 end subroutine
@@ -261,7 +261,7 @@ subroutine calc_corrected_velocity(this, grid, fluid, del_t, setting, p_ic, bc_t
 
     !面の流束の速度補正. 
     if ( this%correct_face_flux ) then
-        call fs_correction_face_flux(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, grid%dv, del_t, &
+        call fs_correction_face_flux(imx, jmx, kmx, grid%dx, grid%dy, grid%dz, del_t, &
                 fluid%pressure, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
     else
         !圧力で補正しない場合. mi, mj, mkは単に速度の線形補間として取り扱う. 
@@ -370,6 +370,7 @@ end subroutine
 subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, diff)
     !!右辺を計算するのに必要な移流と拡散流束を計算する.
     !!@note 陰解法に必要な右辺項は外部で計算する.
+    !!@todo 面ループへの変更. 
     class(solver_fs),intent(in) :: this
     class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fluid
@@ -837,25 +838,26 @@ subroutine fs_correction_v2(imx, jmx, kmx, dsi, dsj, dsk, dv, del_t, p, v)
 
 end subroutine
 
-subroutine fs_correction_face_flux(imx, jmx, kmx, dsi, dsj, dsk, dv, del_t, p, mi, mj, mk)
+subroutine fs_correction_face_flux(imx, jmx, kmx, dx, dy, dz, del_t, p, mi, mj, mk)
     !!求めた圧力で速度を修正し, n+1段階の速度を求める.
     integer(IP),intent(in) :: imx, jmx, kmx
-    real(DP),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:)
-    real(DP),intent(in) :: dv(2:,2:,2:)
+    real(DP),intent(in) :: dx(:), dy(:), dz(:)
+    ! real(DP),intent(in) :: dv(2:,2:,2:)
     real(DP),intent(in) :: del_t
     real(DP),intent(in) :: p(:,:,:)
     real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
 
     integer(IP) i, j, k
-    real(dp) ds_
+    real(dp) dl_
 
     !面速度 = 面に垂直な流速
     !>面の流束を圧力で修正する.
     do k = 2, kmx
     do j = 2, jmx
     do i = 1, imx
-        ds_ = dsi(j,k)
-        mi(i,j,k) = mi(i,j,k) - del_t*ds_*(p(i+1,j  ,k  ) - p(i  ,j  ,k  ))/dv(i,j,k)
+        ! ds_ = dsi(j,k)
+        dl_ = 0.5_dp*(dx(i) + dx(i+1))
+        mi(i,j,k) = mi(i,j,k) - del_t*(p(i+1,j  ,k  ) - p(i  ,j  ,k  ))/dl_
     end do
     end do
     end do
@@ -863,8 +865,9 @@ subroutine fs_correction_face_flux(imx, jmx, kmx, dsi, dsj, dsk, dv, del_t, p, m
     do k = 2, kmx
     do j = 1, jmx
     do i = 2, imx
-        ds_ = dsj(i,k)
-        mj(i,j,k) = mj(i,j,k) - del_t*ds_*(p(i  ,j+1,k  ) - p(i  ,j  ,k  ))/dv(i,j,k)
+        ! ds_ = dsj(i,k)
+        dl_ = 0.5_dp*(dy(j) + dy(j+1))
+        mj(i,j,k) = mj(i,j,k) - del_t*(p(i  ,j+1,k  ) - p(i  ,j  ,k  ))/dl_
     end do
     end do
     end do
@@ -872,8 +875,9 @@ subroutine fs_correction_face_flux(imx, jmx, kmx, dsi, dsj, dsk, dv, del_t, p, m
     do k = 1, kmx
     do j = 2, jmx
     do i = 2, imx
-        ds_ = dsk(i,j)
-        mk(i,j,k) = mk(i,j,k) - del_t*ds_*(p(i  ,j  ,k+1) - p(i,j  ,k  ))/dv(i,j,k)
+        ! ds_ = dsk(i,j)
+        dl_ = 0.5_dp*(dz(k) + dz(k+1))
+        mk(i,j,k) = mk(i,j,k) - del_t*(p(i  ,j  ,k+1) - p(i,j  ,k  ))/dl_
     end do
     end do
     end do
