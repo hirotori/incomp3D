@@ -530,7 +530,7 @@ subroutine set_matrix_p(coeffs, grid)
     !k-
     do k = 1, kmx
     do j = 2, jmx
-    do i = 1, imx
+    do i = 2, imx
         ds_ = grid%dsz(i,k)
         dl_ = 0.5_dp*(grid%dz(k) + grid%dz(k+1))
         !面(i)からみて, 左側(i)のセルの東側副対角成分, 右側(i+1)のセルの西側副対角成分がわかる.
