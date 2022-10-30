@@ -29,6 +29,8 @@ subroutine construct_from_meshdata(this, imx, jmx, kmx, r)
 
     call move_alloc(r, this%rp)
 
+    call this%alloc_arrays()
+
     !セル中心の計算.
     call calc_geometric_center(this%imax, this%jmax, this%kmax, this%rp, this%rc)
 
@@ -37,10 +39,9 @@ subroutine construct_from_meshdata(this, imx, jmx, kmx, r)
     print "(g0, ' <= y <= ', g0)", minval(this%rc(2,2:,2:,2:)), maxval(this%rc(2,2:,2:,2:))
     print "(g0, ' <= z <= ', g0)", minval(this%rc(3,2:,2:,2:)), maxval(this%rc(3,2:,2:,2:))
 
-
-    call this%alloc_arrays()
-
     call this%calc_geometry()
+
+    call this%calc_ghost_cell_centers()
 
 end subroutine 
 

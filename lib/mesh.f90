@@ -38,6 +38,7 @@ module mesh_m
         procedure,public :: get_cell_count
         procedure,public :: alloc_arrays
         procedure,public :: calc_geometry
+        procedure,public :: calc_ghost_cell_centers
         procedure,public,non_overridable :: get_equil_dx
     end type
     
@@ -83,13 +84,11 @@ subroutine init_equil_spaced_mesh(this, imx, jmx, kmx, lengths)
     this%jmax = jmx
     this%kmax = kmx
 
-    allocate(this%rc(3,1:imx,1:jmx,1:kmx))
     allocate(this%rp(3,1:imx,1:jmx,1:kmx))
+    call this%alloc_arrays()
     
     call create_equil_spaced_mesh(imx, jmx, kmx, this%dx_const, lengths, this%rc, this%rp)
     call calc_equil_mesh_geometry(this)
-
-    call this%alloc_arrays()
 
     this%dx(:) = this%dx_const(1)
     this%dy(:) = this%dx_const(2)
@@ -98,6 +97,8 @@ subroutine init_equil_spaced_mesh(this, imx, jmx, kmx, lengths)
     this%dsx(2:,2:) = this%ds_const(1)
     this%dsy(2:,2:) = this%ds_const(2)
     this%dsz(2:,2:) = this%ds_const(3)
+
+    call this%calc_ghost_cell_centers()
     
     allocate(this%dv(2:this%imax,2:this%jmax,2:this%kmax), source = this%dv_const)
 
@@ -122,6 +123,7 @@ end function
 subroutine alloc_arrays(this)
     class(equil_mesh_t),intent(inout) :: this
 
+    allocate(this%rc(3,1:this%imax+1,1:this%jmax+1,1:this%kmax+1))
     allocate(this%dx(1:this%imax+1), source = 0.0_dp)
     allocate(this%dy(1:this%jmax+1), source = 0.0_dp)
     allocate(this%dz(1:this%kmax+1), source = 0.0_dp)
@@ -215,6 +217,76 @@ subroutine calc_geometric_center(imx, jmx, kmx, rp, rc)
                                 + rp(:,i-1,j  ,k  ) + rp(:,i,j  ,k  ))
     end do
     end do                
+    end do
+
+end subroutine
+
+subroutine calc_ghost_cell_centers(this)
+    !!仮想セルのセル中心を計算する. 
+    !!@note 仮想セルの中心点は, 境界面を挟んで境界セルと面対称な位置に置かれる.
+    class(equil_mesh_t),intent(inout) :: this
+
+    integer i, j, k
+    real(dp) dx_(3)
+    
+    !i-left boundary
+    !不等間隔直交格子のため, x方向のみ移動する.
+    i = 1
+    dx_(:) = 0.0_dp
+    do k = 2, this%kmax
+    do j = 2, this%jmax
+        dx_(1) = this%dx(i+1)
+        this%rc(:,i,j,k) = this%rc(:,i+1,j,k) - dx_(:)
+    end do
+    end do
+
+    !i-right boundary
+    i = this%imax
+    do k = 2, this%kmax
+    do j = 2, this%jmax
+        dx_(1) = this%dx(i)
+        this%rc(:,i+1,j,k) = this%rc(:,i,j,k) - dx_(:)
+    end do
+    end do
+
+    !j-left boundary
+    !不等間隔直交格子のため, y方向のみ移動する.
+    j = 1
+    dx_(:) = 0.0_dp
+    do k = 2, this%kmax
+    do i = 2, this%imax
+        dx_(2) = this%dy(i+1)
+        this%rc(:,i,j,k) = this%rc(:,i,j+1,k) - dx_(:)
+    end do
+    end do
+
+    !j-right boundary
+    j = this%jmax
+    do k = 2, this%kmax
+    do i = 2, this%jmax
+        dx_(1) = this%dy(j)
+        this%rc(:,i,j+1,k) = this%rc(:,i,j,k) - dx_(:)
+    end do
+    end do
+
+    !k-left boundary
+    !不等間隔直交格子のため, z方向のみ移動する.
+    k = 1
+    dx_(:) = 0.0_dp
+    do j = 2, this%jmax
+    do i = 2, this%imax
+        dx_(1) = this%dz(k+1)
+        this%rc(:,i,j,k) = this%rc(:,i,j,k+1) - dx_(:)
+    end do
+    end do
+
+    !k-right boundary
+    k = this%kmax
+    do j = 2, this%jmax
+    do i = 2, this%imax
+        dx_(1) = this%dz(k)
+        this%rc(:,i,j,k+1) = this%rc(:,i,j,k) - dx_(:)
+    end do
     end do
 
 end subroutine
