@@ -122,9 +122,9 @@ end function
 subroutine alloc_arrays(this)
     class(equil_mesh_t),intent(inout) :: this
 
-    allocate(this%dx(2:this%imax), source = 0.0_dp)
-    allocate(this%dy(2:this%jmax), source = 0.0_dp)
-    allocate(this%dz(2:this%kmax), source = 0.0_dp)
+    allocate(this%dx(1:this%imax+1), source = 0.0_dp)
+    allocate(this%dy(1:this%jmax+1), source = 0.0_dp)
+    allocate(this%dz(1:this%kmax+1), source = 0.0_dp)
 
     allocate(this%dsx(2:this%jmax,2:this%kmax), source = 0.0_dp)
     allocate(this%dsy(2:this%imax,2:this%kmax), source = 0.0_dp)

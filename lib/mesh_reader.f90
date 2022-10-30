@@ -50,7 +50,7 @@ subroutine original_format_reader(path, imx, jmx, kmx, lengths, r)
     integer(ip) i, j, k
 
     open(newunit=unit, file=path, status="old", form="formatted")
-        print "('Loading Mesh file ""', A, '""...')", path
+        print "('Loading Mesh file ""', A, '""...')", trim(adjustl(path))
         read(unit,"(A)",iostat=iostat,iomsg=iomsg) format_
         read(unit,"(A)",iostat=iostat,iomsg=iomsg) comment_
         read(unit,*,iostat=iostat,iomsg=iomsg) imx, jmx, kmx

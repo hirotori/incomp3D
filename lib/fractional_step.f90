@@ -11,7 +11,7 @@ module fractional_step_m
         !!線形方程式の係数.
         !!@todo データの持ち方. 
         real(DP),allocatable :: a_nb(:,:,:,:)
-            !!副対角成分. 1:-x,2:+x,3:-y,4:+y,5:-z,6:+z
+            !!副対角成分. 1:w,2:e,3:s,4:n,5:b,6:t
         real(dp),allocatable :: a_p(:,:,:)
             !!主対角成分
     end type
@@ -69,7 +69,7 @@ subroutine slvr_init_common(this, fld, grd, settings_slv, setting_case)
     allocate(this%coeffs_p%a_p(2:imx,2:jmx,2:kmx))
 
     !係数行列は1回だけ更新すれば良い.
-    call set_matrix_p(this%coeffs_p, grd%dsx, grd%dsy, grd%dsz, grd%dv, imx, jmx, kmx) 
+    call set_matrix_p(this%coeffs_p, grd) 
     this%convec_type = settings_slv%conv_type
     this%diffus_type = settings_slv%diff_type
     this%correct_face_flux = settings_slv%correct_face_flux
@@ -462,33 +462,87 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
 
 end subroutine
 
-subroutine set_matrix_p(coeffs, dsi, dsj, dsk, dv, imx, jmx, kmx)
+subroutine set_matrix_p(coeffs, grid)
     !!圧力Poisson方程式の係数行列の設定.
     type(mat_a),intent(inout) :: coeffs
-    real(DP),intent(in) :: dsi(2:,2:), dsj(2:,2:), dsk(2:,2:)
-    real(DP),intent(in) :: dv(2:,2:,2:)
-    integer(IP),intent(in) :: imx, jmx, kmx
+    class(equil_mesh_t),intent(in) :: grid
+    integer(IP) i, j, k, imx, jmx, kmx
+    ! real(dp) dv_(3), ds_(3)
+    real(dp) ds_, dl_
 
-    integer(IP) i, j, k
-    real(dp) dv_(3), ds_(3)
+    !面毎に更新する. 圧力Poisson方程式は対称行列なので可能. 
+    !不等間隔直交格子の形状を利用して, 簡略化する.
+    !> $u_{f}^{n+1} = \overline{u_{f}^{\ast}} + \left(\frac{\partial p}{\partial x}\right)_{f}$
+    
+    !               _____      / ∂p \   _____      p_F - p_C
+    !  u_f^{n+1}  =  u_f* - Δt| ---- | = u_f* - Δt --------
+    !                          \ ∂x / f               Δx_f
+    !
+    !を連続の式に代入する. 
+    !
+    !  Σ(u_f S_f) = 
+    call grid%get_extents_sub(imx, jmx, kmx)
 
+    !初期化.
+    coeffs%a_nb(:,:,:,:) = 0.0_dp
+    coeffs%a_p(:,:,:) = 0.0_dp
+
+    !i-direction face (inner & boundary).
     do k = 2, kmx
     do j = 2, jmx
-    do i = 2, imx
-        ds_(1) = dsi(j,k)
-        ds_(2) = dsj(i,k)
-        ds_(3) = dsk(i,j)
-        dv_(1) = 0.5_dp*(dv(i,j,k) + dv(i+1,j,k))
-        dv_(2) = 0.5_dp*(dv(i,j,k) + dv(i,j+1,k))
-        dv_(3) = 0.5_dp*(dv(i,j,k) + dv(i,j,k+1))
-        
-        coeffs%a_nb(1:2,i,j,k) = ds_(1)*ds_(1)/dv_(1)
-        coeffs%a_nb(3:4,i,j,k) = ds_(2)*ds_(2)/dv_(2)
-        coeffs%a_nb(5:6,i,j,k) = ds_(3)*ds_(3)/dv_(3)
-        
-        coeffs%a_p(i,j,k) = - 2.0_dp*(ds_(1)*ds_(1)/dv_(1) + ds_(2)*ds_(2)/dv_(2) + ds_(3)*ds_(3)/dv_(3))
+    do i = 1, imx
+        ds_ = grid%dsx(j,k)
+        dl_ = 0.5_dp*(grid%dx(i) + grid%dx(i+1)) !i = 1のときdx(i) = 0.0, i = imxも同様. equil_mesh_t参照.
+        ! dv_ = dv(i,j,k)
+        !面(i)からみて, 左側(i)のセルの副対角成分(e), 右側(i+1)のセルの副対角成分(w)がわかる.
+        if ( i /= 1 ) then
+            coeffs%a_nb(2,i,j,k) = ds_/dl_
+            coeffs%a_p(i,j,k) = coeffs%a_p(i,j,k) - ds_/dl_
 
+        end if
+        if ( i /= imx ) then
+            coeffs%a_nb(1,i+1,j,k) = ds_/dl_                
+            coeffs%a_p(i+1,j,k) = coeffs%a_p(i+1,j,k) - ds_/dl_                
+        end if
+    end do        
+    end do        
     end do
+
+    !j-
+    do k = 2, kmx
+    do j = 1, jmx
+    do i = 2, imx
+        ds_ = grid%dsy(i,k)
+        dl_ = 0.5_dp*(grid%dy(j) + grid%dy(j+1))
+        !面(j)からみて, 左側(j)のセルの副対角成分(n), 右側(j+1)のセルの副対角成分(s)がわかる.
+        if ( j /= 1 ) then
+            coeffs%a_nb(4,i,j,k) = ds_/dl_
+            coeffs%a_p(i,j,k) = coeffs%a_p(i,j,k) - ds_/dl_
+        end if
+        if ( j /= jmx ) then
+            coeffs%a_nb(3,i,j+1,k) = ds_/dl_                
+            coeffs%a_p(i,j+1,k) = coeffs%a_p(i,j+1,k) - ds_/dl_                
+        end if
+    end do        
+    end do        
+    end do
+
+    !k-
+    do k = 1, kmx
+    do j = 2, jmx
+    do i = 1, imx
+        ds_ = grid%dsz(i,k)
+        dl_ = 0.5_dp*(grid%dz(k) + grid%dz(k+1))
+        !面(i)からみて, 左側(i)のセルの東側副対角成分, 右側(i+1)のセルの西側副対角成分がわかる.
+        if ( k /= 1 ) then
+            coeffs%a_nb(6,i,j,k) = ds_/dl_
+            coeffs%a_p(i,j,k) = coeffs%a_p(i,j,k) - ds_/dl_
+        end if
+        if ( k /= kmx ) then
+            coeffs%a_nb(5,i,j,k+1) = ds_/dl_                
+            coeffs%a_p(i,j,k+1) = coeffs%a_p(i,j,k+1) - ds_/dl_                
+        end if
+    end do        
     end do        
     end do
 
