@@ -98,8 +98,6 @@ subroutine init_equil_spaced_mesh(this, imx, jmx, kmx, lengths)
     this%dsy(2:,2:) = this%ds_const(2)
     this%dsz(2:,2:) = this%ds_const(3)
 
-    this%dv_const = product(this%dx_const)
-
     call this%calc_ghost_cell_centers()
     
     allocate(this%dv(2:this%imax,2:this%jmax,2:this%kmax), source = this%dv_const)
@@ -198,6 +196,12 @@ subroutine calc_equil_mesh_geometry(this)
     !calculate cell volume
     this%dv_const = product(this%dx_const)
 
+    print "('equil mesh geometry property')"
+    print "(2x,'ds (x) = ', g0)", this%ds_const(1)
+    print "(2x,'ds (y) = ', g0)", this%ds_const(2)
+    print "(2x,'ds (z) = ', g0)", this%ds_const(3)
+    print "(2x,'dv     = ', g0)", this%dv_const
+
 end subroutine
 
 
@@ -247,7 +251,7 @@ subroutine calc_ghost_cell_centers(this)
     do k = 2, this%kmax
     do j = 2, this%jmax
         dx_(1) = this%dx(i)
-        this%rc(:,i+1,j,k) = this%rc(:,i,j,k) - dx_(:)
+        this%rc(:,i+1,j,k) = this%rc(:,i,j,k) + dx_(:)
     end do
     end do
 
@@ -266,8 +270,8 @@ subroutine calc_ghost_cell_centers(this)
     j = this%jmax
     do k = 2, this%kmax
     do i = 2, this%jmax
-        dx_(1) = this%dy(j)
-        this%rc(:,i,j+1,k) = this%rc(:,i,j,k) - dx_(:)
+        dx_(2) = this%dy(j)
+        this%rc(:,i,j+1,k) = this%rc(:,i,j,k) + dx_(:)
     end do
     end do
 
@@ -277,7 +281,7 @@ subroutine calc_ghost_cell_centers(this)
     dx_(:) = 0.0_dp
     do j = 2, this%jmax
     do i = 2, this%imax
-        dx_(1) = this%dz(k+1)
+        dx_(3) = this%dz(k+1)
         this%rc(:,i,j,k) = this%rc(:,i,j,k+1) - dx_(:)
     end do
     end do
@@ -286,10 +290,15 @@ subroutine calc_ghost_cell_centers(this)
     k = this%kmax
     do j = 2, this%jmax
     do i = 2, this%imax
-        dx_(1) = this%dz(k)
-        this%rc(:,i,j,k+1) = this%rc(:,i,j,k) - dx_(:)
+        dx_(3) = this%dz(k)
+        this%rc(:,i,j,k+1) = this%rc(:,i,j,k) + dx_(:)
     end do
     end do
+
+    print "('range including ghost cell ::')"
+    print "(g0, ' <= x <= ', g0)", minval(this%rc(1,:,:,:)), maxval(this%rc(1,:,:,:))
+    print "(g0, ' <= y <= ', g0)", minval(this%rc(2,:,:,:)), maxval(this%rc(2,:,:,:))
+    print "(g0, ' <= z <= ', g0)", minval(this%rc(3,:,:,:)), maxval(this%rc(3,:,:,:))
 
 end subroutine
 end module mesh_m
