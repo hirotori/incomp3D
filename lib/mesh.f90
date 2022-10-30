@@ -98,6 +98,8 @@ subroutine init_equil_spaced_mesh(this, imx, jmx, kmx, lengths)
     this%dsy(2:,2:) = this%ds_const(2)
     this%dsz(2:,2:) = this%ds_const(3)
 
+    this%dv_const = product(this%dx_const)
+
     call this%calc_ghost_cell_centers()
     
     allocate(this%dv(2:this%imax,2:this%jmax,2:this%kmax), source = this%dv_const)
