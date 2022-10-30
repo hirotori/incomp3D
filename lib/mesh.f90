@@ -255,7 +255,7 @@ subroutine calc_ghost_cell_centers(this)
     dx_(:) = 0.0_dp
     do k = 2, this%kmax
     do i = 2, this%imax
-        dx_(2) = this%dy(i+1)
+        dx_(2) = this%dy(j+1)
         this%rc(:,i,j,k) = this%rc(:,i,j+1,k) - dx_(:)
     end do
     end do
