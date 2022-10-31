@@ -554,7 +554,7 @@ subroutine set_matrix_p(coeffs, grid)
         do k = 2, kmx
         do j = 2, jmx
         do i = 2, imx
-            if ( sum(coeffs%a_nb(:,i,j,k)) /= coeffs%a_p(i,j,k) ) then
+            if ( sum(coeffs%a_nb(:,i,j,k)) /= -coeffs%a_p(i,j,k) ) then
                 print "(*(i0,:,', '))", i, j, k
                 count_ = count_ + 1
             end if
