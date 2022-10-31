@@ -493,7 +493,7 @@ subroutine set_matrix_p(coeffs, grid)
     do j = 2, jmx
     do i = 1, imx
         ds_ = grid%dsx(j,k)
-        dl_ = 0.5_dp*(grid%dx(i) + grid%dx(i+1)) !i = 1のときdx(i) = 0.0, i = imxも同様. equil_mesh_t参照.
+        dl_ = 0.5_dp*(grid%dx(i) + grid%dx(i+1)) !i = 1のときdx(i) = dx(i+1), i = imxも同様. equil_mesh_t参照.
         ! dv_ = dv(i,j,k)
         !面(i)からみて, 左側(i)のセルの副対角成分(e), 右側(i+1)のセルの副対角成分(w)がわかる.
         if ( i /= 1 ) then
@@ -546,6 +546,28 @@ subroutine set_matrix_p(coeffs, grid)
     end do        
     end do        
     end do
+
+    !妥当性テスト. 同じセルの副対角成分の和=主対角成分*-1.
+    block
+        integer :: count_ = 0
+        print "('-- check validation for the coefficients of matrix p --')"
+        do k = 2, kmx
+        do j = 2, jmx
+        do i = 2, imx
+            if ( sum(coeffs%a_nb(:,i,j,k)) /= coeffs%a_p(i,j,k) ) then
+                print "(*(i0,:,', '))", i, j, k
+                count_ = count_ + 1
+            end if
+        end do
+        end do        
+        end do
+
+        if ( count_ == 0 ) then
+            print "('All coefficients are valid.')"
+        else
+            print "('Warning :: Invalid cells are ', i0, '. ')", count_
+        end if
+    end block
 
 end subroutine
 
