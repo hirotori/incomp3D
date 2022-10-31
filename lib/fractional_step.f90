@@ -231,6 +231,22 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
         end do
         end do    
         end do
+        write(unit,*) "convec"
+        do k = 2, kmx
+        do j = 2, jmx
+        do i = 2, imx
+            write(unit,"(*(g0,1x))") conv(:,i,j,k)
+        end do
+        end do    
+        end do
+        write(unit,*) "diffusive"
+        do k = 2, kmx
+        do j = 2, jmx
+        do i = 2, imx
+            write(unit,"(*(g0,1x))") diff(:,i,j,k)
+        end do
+        end do    
+        end do
     end block
 
 end subroutine

@@ -139,7 +139,7 @@ subroutine create_equil_spaced_mesh(imx, jmx, kmx, dxs, l_xyz, rc, rp)
     integer(IP),intent(in) :: imx, jmx, kmx
     real(DP),intent(out) :: dxs(3)
     real(DP),intent(in) :: l_xyz(3)
-    real(DP),intent(out) :: rc(:,2:,2:,2:), rp(:,:,:,:)
+    real(DP),intent(out) :: rc(:,:,:,:), rp(:,:,:,:)
 
     integer(IP) i, j, k
     
@@ -171,9 +171,9 @@ subroutine create_equil_spaced_mesh(imx, jmx, kmx, dxs, l_xyz, rc, rp)
     call calc_geometric_center(imx, jmx, kmx, rp, rc)
 
     print "('Mesh created.')"
-    print "(g0, ' <= x <= ', g0)", minval(rc(1,2:,2:,2:)), maxval(rc(1,2:,2:,2:))
-    print "(g0, ' <= y <= ', g0)", minval(rc(2,2:,2:,2:)), maxval(rc(2,2:,2:,2:))
-    print "(g0, ' <= z <= ', g0)", minval(rc(3,2:,2:,2:)), maxval(rc(3,2:,2:,2:))
+    print "(g0, ' <= x <= ', g0)", minval(rc(1,2:imx,2:jmx,2:kmx)), maxval(rc(1,2:imx,2:jmx,2:kmx))
+    print "(g0, ' <= y <= ', g0)", minval(rc(2,2:imx,2:jmx,2:kmx)), maxval(rc(2,2:imx,2:jmx,2:kmx))
+    print "(g0, ' <= z <= ', g0)", minval(rc(3,2:imx,2:jmx,2:kmx)), maxval(rc(3,2:imx,2:jmx,2:kmx))
 
 end subroutine
 
@@ -210,7 +210,7 @@ subroutine calc_geometric_center(imx, jmx, kmx, rp, rc)
     !!@note 等間隔直交格子あるいは不等間隔格子にのみ対応している.
     integer(ip),intent(in) :: imx, jmx, kmx
     real(dp),intent(in) :: rp(:,:,:,:)
-    real(dp),intent(inout) :: rc(:,2:,2:,2:)
+    real(dp),intent(inout) :: rc(:,:,:,:)
 
     integer i, j, k
 
