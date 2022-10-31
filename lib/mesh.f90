@@ -210,7 +210,7 @@ subroutine calc_geometric_center(imx, jmx, kmx, rp, rc)
     !!@note 等間隔直交格子あるいは不等間隔格子にのみ対応している.
     integer(ip),intent(in) :: imx, jmx, kmx
     real(dp),intent(in) :: rp(:,:,:,:)
-    real(dp),intent(inout) :: rc(:,:,:,:)
+    real(dp),intent(inout) :: rc(:,2:,2:,2:)
 
     integer i, j, k
 
