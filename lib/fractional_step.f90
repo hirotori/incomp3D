@@ -221,7 +221,17 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
     end do
     end do
 
-
+    block
+        integer unit
+        open(newunit=unit, file="test_pseudo_vel.dat", status="replace")
+        do k = 2, kmx
+        do j = 2, jmx
+        do i = 2, imx
+            write(unit,"(*(g0,1x))") fluid%velocity(:,i,j,k)
+        end do
+        end do    
+        end do
+    end block
 
 end subroutine
 
