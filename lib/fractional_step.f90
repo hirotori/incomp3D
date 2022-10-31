@@ -550,12 +550,16 @@ subroutine set_matrix_p(coeffs, grid)
     !妥当性テスト. 同じセルの副対角成分の和=主対角成分*-1.
     block
         integer :: count_ = 0
+        real(dp) sum_anb, ap_
         print "('-- check validation for the coefficients of matrix p --')"
         do k = 2, kmx
         do j = 2, jmx
         do i = 2, imx
-            if ( sum(coeffs%a_nb(:,i,j,k)) /= -coeffs%a_p(i,j,k) ) then
+            sum_anb = sum(coeffs%a_nb(:,i,j,k))
+            ap_ = coeffs%a_p(i,j,k)
+            if ( sum_anb /= -ap_ ) then
                 print "(*(i0,:,', '))", i, j, k
+                print "(2(g0,1x))", sum_anb, -ap_
                 count_ = count_ + 1
             end if
         end do
