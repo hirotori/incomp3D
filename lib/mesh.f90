@@ -139,7 +139,7 @@ subroutine create_equil_spaced_mesh(imx, jmx, kmx, dxs, l_xyz, rc, rp)
     integer(IP),intent(in) :: imx, jmx, kmx
     real(DP),intent(out) :: dxs(3)
     real(DP),intent(in) :: l_xyz(3)
-    real(DP),intent(out) :: rc(:,:,:,:), rp(:,:,:,:)
+    real(DP),intent(out) :: rc(:,2:,2:,2:), rp(:,:,:,:)
 
     integer(IP) i, j, k
     
