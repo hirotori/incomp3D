@@ -3,7 +3,7 @@ module fractional_step_m
     use floating_point_parameter_m
     use fluid_field_m
     use mesh_m
-    use setting_parameter_m, only : slv_setting, case_setting
+    use setting_parameter_m, only : case_setting
     use boundary_condition_m, only : bc_t, boundary_condition_pressure, boundary_condition_velocity
     implicit none
     private
@@ -16,15 +16,29 @@ module fractional_step_m
             !!主対角成分
     end type
 
+    type base_slv_setting_t
+        !!ソルバクラスの基本的な設定項目. namelist利用のため, 設定項目はソルバとは分離しておく.
+        real(DP) :: tolerance = 0.001_dp
+        !!反復終了のための残差の閾値.
+        integer(IP) :: itr_max = 1000
+        !!反復回数上限
+        real(DP) :: relax_coeff = 1.1_dp
+        !!加速係数.
+        character(2) :: conv_type = "cd"
+            !!移流項の評価方法. "ud1":1次精度風上法, "cd":2次精度中心差分, "qu":QUICK
+        integer(ip) :: diff_type = 1
+            !!拡散項の評価方法. 1:通常の中心差分, 2:ステンシルが一つ飛びの中心差分. ハウスコードに対応.
+        logical :: correct_face_flux = .true.
+    end type
+
     type solver_fs
         !!フラクショナルステップソルバ. 
         !!時間精度はEuler陽解法.
         type(mat_a) :: coeffs_p
-        character(:),allocatable :: convec_type
-            !!移流項の評価方法. "ud1":1次精度風上法, "cd":2次精度中心差分, "qu":QUICK
-        integer(ip),allocatable :: diffus_type
-            !!拡散項の評価方法. 1:通常の中心差分, 2:ステンシルが一つ飛びの中心差分. ハウスコードに対応.
-        logical :: correct_face_flux = .true.
+        type(base_slv_setting_t) :: settings
+
+        real(dp),allocatable :: v0(:,:,:,:)
+            !!既知時間段階の速度.
 
         !スレッド並列のため作成. 
         integer(ip),allocatable,private :: c_red(:,:)
@@ -35,31 +49,31 @@ module fractional_step_m
             !!mod(i+j+k,2)/=0となるもの.
         contains
         procedure :: init => init_solver 
+        procedure :: load_setting
         procedure :: process_before_loop
+        procedure :: proceed_time_step
         procedure :: predict_pseudo_velocity
         procedure calc_corrected_velocity
     end type
 
     public solver_fs, slvr_init_common, calc_convective_and_diffusive_flux, mat_a, cal_face_velocity
 contains
-subroutine init_solver(this, fld, grd, settings_slv, setting_case)
+subroutine init_solver(this, fld, grd, setting_case)
     !!ソルバを初期化する.
     class(solver_fs),intent(inout) :: this
     type(fluid_field_t),intent(in) :: fld
     class(equil_mesh_t),intent(in) :: grd
-    type(slv_setting),intent(in) :: settings_slv
     type(case_setting),intent(in) :: setting_case
 
-    call slvr_init_common(this, fld, grd, settings_slv, setting_case)
+    call slvr_init_common(this, fld, grd, setting_case)
 
 end subroutine
 
-subroutine slvr_init_common(this, fld, grd, settings_slv, setting_case)
+subroutine slvr_init_common(this, fld, grd, setting_case)
     !!ソルバの初期化を行う. 圧力の係数行列設定, 移流/拡散スキームの設定.
     class(solver_fs),intent(inout) :: this
     type(fluid_field_t),intent(in) :: fld
     class(equil_mesh_t),intent(in) :: grd
-    type(slv_setting),intent(in) :: settings_slv
     type(case_setting),intent(in) :: setting_case
 
     integer(ip) imx, jmx, kmx
@@ -70,15 +84,14 @@ subroutine slvr_init_common(this, fld, grd, settings_slv, setting_case)
 
     !係数行列は1回だけ更新すれば良い.
     call set_matrix_p(this%coeffs_p, grd) 
-    this%convec_type = settings_slv%conv_type
-    this%diffus_type = settings_slv%diff_type
-    this%correct_face_flux = settings_slv%correct_face_flux
+
+    call this%load_setting()
 
     print "('   -------- Fractional Step Method ---------    ')"
     print "('      - 3D unsteady problem                     ')"
-    print "('      - Convection : ', A)", merge("Up-wind", "Central", this%convec_type=="ud")
-    print "('      - Diffusion  : ', A)", merge("compact", " large ", this%diffus_type==1)  
-    print "('      - face flux correction : ', A)", merge("Yes","No ",this%correct_face_flux)
+    print "('      - Convection : ', A)", merge("Up-wind", "Central", this%settings%conv_type=="ud")
+    print "('      - Diffusion  : ', A)", merge("compact", " large ", this%settings%diff_type==1)  
+    print "('      - face flux correction : ', A)", merge("Yes","No ",this%settings%correct_face_flux)
     print "('      - SOR linear solver for Poisson           ')"
     print "('   -----------------------------------------    ')"
 
@@ -151,6 +164,31 @@ subroutine init_for_parallel_computing(this, grd)
 
 end subroutine
 
+subroutine load_setting(this)
+    !!保存したソルバ設定ファイルを開き, 設定を反映させる.
+    use IO_operator_m
+    class(solver_fs),intent(inout) :: this
+    integer unit
+    type(base_slv_setting_t) settings
+    character(:),allocatable :: fname
+    namelist/solver_settings/settings
+
+    fname = "solver_settings.txt"
+    if ( file_exists(fname) ) then
+        open(newunit=unit, file=fname, status="old")
+        read(unit, nml=solver_settings)
+        close(unit)
+    else 
+        open(newunit=unit, file=fname, status="replace")
+        write(unit, nml=solver_settings)
+        close(unit)
+        error stop fname//" doesn't exist. Sample file generated."
+    end if
+
+    this%settings = settings
+
+end subroutine
+
 subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
     !!ループ前の処理. 流体クラスに境界条件を適用し, フラックスを初期値で更新しておく.
     !!@note 内部の速度と圧力は事前に外部で初期化されている. ここでは仮想セルへの更新が行われる.
@@ -169,7 +207,7 @@ subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
     
     !>ループ前の初期値で面流束を求めておく.
     call cal_face_velocity(extents(1), extents(2), extents(3), fld%velocity, fld%mflux_i, fld%mflux_j, fld%mflux_k)
-    if ( this%correct_face_flux ) then
+    if ( this%settings%correct_face_flux ) then
         !>面流束を圧力で補正する設定の場合はそれに倣う.
         
         !!@note 
@@ -180,8 +218,35 @@ subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
              grd%dx, grd%dy, grd%dz, settings_case%dt, fld%pressure, fld%mflux_i, fld%mflux_j, fld%mflux_k)
     end if
 
+    !既知段階の速度を初期化する. リスタート出ない場合は初期場を与えておく.
+    allocate(this%v0, source = fld%velocity)
+
 end subroutine
     
+subroutine proceed_time_step(this, grid, fluid, bc_types, dt, p_ref, sim_diverged)
+    !!速度, 圧力を更新して, 時間ステップを1つ進める.
+    !!@note 時間ステップの管理はここでは行われない. 管理はcase_common_tとその派生によって行われる. 
+    class(solver_fs),intent(inout) :: this
+    class(equil_mesh_t),intent(in) :: grid
+    class(fluid_field_t),intent(inout) :: fluid
+    type(bc_t),intent(in) :: bc_types(:)
+    real(dp),intent(in) :: dt
+    real(dp),intent(in) :: p_Ref
+    logical,intent(out) :: sim_diverged
+
+    call this%predict_pseudo_velocity(grid, fluid, dt, this%v0, bc_types)
+
+    !中間速度に対する境界条件の適用. ソルバの外部で行う理由は, この処理が共通なため.
+    call boundary_condition_velocity(grid%get_extents(), fluid%velocity, bc_types)
+
+    call this%calc_corrected_velocity(grid, fluid, dt, p_ref, bc_types, sim_diverged)
+
+    !補正された新しい時間段階の速度に対する境界条件の適用.
+    call boundary_condition_velocity(grid%get_extents(), fluid%velocity, bc_types)
+
+    this%v0(:,:,:,:) = fluid%velocity(:,:,:,:)
+
+end subroutine
 
 subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
     !!中間速度を計算する.
@@ -251,13 +316,12 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
 
 end subroutine
 
-subroutine calc_corrected_velocity(this, grid, fluid, del_t, setting, p_ic, bc_types, diverged)
+subroutine calc_corrected_velocity(this, grid, fluid, del_t, p_ic, bc_types, diverged)
     !!圧力Poisson方程式を解いて速度とフラックスを修正する.
     class(solver_fs),intent(in) :: this
     class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(inout) :: fluid
     real(DP),intent(in) :: del_t
-    type(slv_setting),intent(in) :: setting
     real(DP),intent(in) :: p_ic
     type(bc_t),intent(in) :: bc_types(6)
     logical,intent(out) :: diverged
@@ -275,10 +339,10 @@ subroutine calc_corrected_velocity(this, grid, fluid, del_t, setting, p_ic, bc_t
         fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, del_t, div_u_star)
 
 #ifdef _OPENMP
-    call fs_poisson_parallel(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, setting, p_ic, bc_types, diverged, &
+    call fs_poisson_parallel(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, this%settings, p_ic, bc_types, diverged, &
     this%c_red, this%c_black)
 #else
-    call fs_poisson_v2(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, setting, p_ic, bc_types, diverged)
+    call fs_poisson_v2(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, this%settings, p_ic, bc_types, diverged)
 #endif
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
@@ -286,7 +350,7 @@ subroutine calc_corrected_velocity(this, grid, fluid, del_t, setting, p_ic, bc_t
     call fs_correction_v2(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, grid%dv, del_t, fluid%pressure, fluid%velocity)
 
     !面の流束の速度補正. 
-    if ( this%correct_face_flux ) then
+    if ( this%settings%correct_face_flux ) then
         call fs_correction_face_flux(imx, jmx, kmx, grid%dx, grid%dy, grid%dz, del_t, &
                 fluid%pressure, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
     else
@@ -414,7 +478,7 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
     integer(IP) i, j, k, ld, imx, jmx, kmx
     real(dp) ds(3)
 
-    ld = this%diffus_type
+    ld = this%settings%diff_type
 
     call grid%get_extents_sub(imx, jmx, kmx)
 
@@ -434,7 +498,7 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
         mt =  fluid%mflux_k(i  ,j  ,k  )*ds(3)
         mb = -fluid%mflux_k(i  ,j  ,k-1)*ds(3)
 
-        select case(this%convec_type) !計算効率的には良くないが, そこまで効率を求めていないので
+        select case(this%settings%conv_type) !計算効率的には良くないが, そこまで効率を求めていないので
         case("ud")
             !::::1st order upwind
             convec(:,i,j,k) = 0.5_dp*(me + abs(me))*v0(:,i  ,j  ,k  ) + 0.5_dp*(me - abs(me))*v0(:,i+1,j  ,k  ) &
@@ -454,7 +518,7 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
                                  + 0.5_dp*mb*(v0(:,i  ,j  ,k-1) + v0(:,i,j,k)) + 0.5_dp*mt*(v0(:,i,j,k) + v0(:,i,  j  ,k+1))
         
         case default
-            error stop this%convec_type//" not supported."
+            error stop this%settings%conv_type//" not supported."
         end select
         
         !----diffusion----
@@ -642,7 +706,7 @@ subroutine fs_poisson_v2(imx, jmx, kmx, coeffs, source_b, p, setting, p_ic, bc_t
     type(mat_a),intent(in) :: coeffs
     real(DP),intent(in) :: source_b(2:,2:,2:)
     real(DP),intent(inout) :: p(:,:,:)
-    type(slv_setting),intent(in) :: setting
+    type(base_slv_setting_t),intent(in) :: setting
     real(DP),intent(in) :: p_ic
     type(bc_t),intent(in) :: bc_types(6)
     logical,intent(out) :: diverged
@@ -744,7 +808,7 @@ subroutine fs_poisson_parallel(imx, jmx, kmx, coeffs, source_b, p, setting, p_ic
     type(mat_a),intent(in) :: coeffs
     real(DP),intent(in) :: source_b(2:,2:,2:)
     real(DP),intent(inout) :: p(:,:,:)
-    type(slv_setting),intent(in) :: setting
+    type(base_slv_setting_t),intent(in) :: setting
     real(DP),intent(in) :: p_ic
     type(bc_t),intent(in) :: bc_types(6)
     logical,intent(out) :: diverged

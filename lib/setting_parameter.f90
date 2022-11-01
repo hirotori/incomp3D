@@ -5,19 +5,7 @@ module setting_parameter_m
     implicit none
     private
 
-    character(*),parameter :: current_file_version = "1.3"
-    type slv_setting
-        !!poisson方程式のソルバ設定.
-        real(DP) :: tolerance = 0.001_dp
-        !!反復終了のための残差の閾値.
-        integer(IP) :: itr_max = 1000
-        !!反復回数上限
-        real(DP) :: relax_coeff = 1.1_dp
-        !!加速係数.
-        character(2) :: conv_type = "cd"
-        integer(ip) :: diff_type = 1
-        logical :: correct_face_flux = .true.
-    end type
+    character(*),parameter :: current_file_version = "1.4"
 
     type case_setting
         character(128),allocatable :: grid_file_name
@@ -31,30 +19,27 @@ module setting_parameter_m
         real(dp) :: reynolds_number = 100.0_dp
     end type
     
-    public slv_setting, case_setting, read_config
+    public case_setting, read_config
 
 contains
-subroutine read_config(fname, c_setting, s_setting, bc_ids, bc_properties)
+subroutine read_config(fname, c_setting, bc_ids, bc_properties)
     character(*),intent(in) :: fname
     type(case_setting),intent(out) :: c_setting
-    type(slv_setting),intent(out) :: s_setting
     integer(ip),intent(out) :: bc_ids(2,6)
         !!速度/圧力境界条件. 速度, 圧力の順番.
     real(dp),intent(out) :: bc_properties(4,6)
 
 
 
-    call read_config_core(fname, c_setting, s_setting, &
-                          bc_ids, bc_properties)
+    call read_config_core(fname, c_setting, bc_ids, bc_properties)
 
     !TODO リファクタリング. namelistにして各構造体は別ファイル扱いとする??
 
 end subroutine
 
-subroutine read_config_core(fname, setting_c ,setting, bc_ids, bc_properties)
+subroutine read_config_core(fname, setting_c, bc_ids, bc_properties)
     character(*),intent(in) :: fname
     type(case_setting),intent(out) :: setting_c
-    type(slv_setting),intent(out) :: setting
     integer(ip),intent(out) :: bc_ids(2,6)
     real(dp),intent(out) :: bc_properties(4,6)
 
@@ -86,22 +71,13 @@ subroutine read_config_core(fname, setting_c ,setting, bc_ids, bc_properties)
     read(unit,*,err=99) setting_c%body_force(:)
     read(unit,*,err=99) setting_c%p_ref
     read(unit,*,err=99) setting_c%u_ic(:)
-    read(unit,*,err=99) setting%itr_max
-    read(unit,*,err=99) setting%tolerance
-    read(unit,*,err=99) setting%relax_coeff
     do l = 1, 6
         read(unit,*,err=99) bc_ids(:,l), bc_properties(:,l)        
     end do
-    read(unit,*,err=99) tmp_ ; setting%conv_type = trim(adjustl(tmp_))
-    read(unit,*,err=99) setting%diff_type
-    read(unit,*,err=99) setting%correct_face_flux
     print "('time step : ',i0, '<= n <=', i0)", setting_c%nstart, setting_c%nend
     print "('delta t   : ',g0.5)", setting_c%dt
     print "('Re        : ',g0)", setting_c%reynolds_number
     print "('Force  : (', g0.2, ', ', g0.2, ', ', g0.2, ') ')", setting_c%body_force(:)
-    print "('Poisson max iteration = ',i0)", setting%itr_max
-    print "('Poisson tolerance     = ',g0.6)", setting%tolerance
-    print "('Poisson alpha         = ',g0.2)", setting%relax_coeff 
     close(unit)
 
     return
@@ -129,16 +105,10 @@ subroutine create_sample_()
         write(unit, "(3(g0.2,1x), ' !body force (x,y,z) ')") 0.0d0, 0.0d0, 0.0d0             
         write(unit, "(g0.2      , ' !Pressure reference (also for initial condition)')") 1.0d0
         write(unit, "(3(g0.2,1x), ' !initial condition for velocity (x,y,z)     ')") 0.0d0, 0.0d0, 0.0d0 
-        write(unit, "(i0      , ' !max iteration no. for poisson eq.')") 1000
-        write(unit, "(g0.2      , ' !tolerance for poisson eq.')") 0.0001d0
-        write(unit, "(g0.2      , ' !accel. coefficient for poisson eq.')") 1.3d0
         do l = 1, 6
             write(unit, "(2(i0,1x),4(g0.2,1x),' !B.C. for ',A)") 1, 1, 0.0d0, 0.0d0, 0.0d0, 1.0d0, &
                                                 label_(l)//" face. [bc_u, bc_p, u, v, w, p]"
         end do
-        write(unit, "(A         , ' !convection term. ""ud"": 1st order upwind, ""cd"": central diff')") "ud"
-        write(unit, "(i0        , ' !diffusion  term.   1 : compact stencil ,   2 : large stencil')") 1
-        write(unit, "(A         , ' ![T/F] if T, face fluxes are corrected by pressure.')") dummy_flag
         write(unit,"(A)") "!**Boundary Condition**"
         write(unit,"(A,1x,i0)") "! Fix value            ", bc_fix_val
         write(unit,"(A,1x,i0)") "! Fix gradient         ", bc_fix_grad

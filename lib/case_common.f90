@@ -34,8 +34,6 @@ module case_common_m
         !/////////////////////////////////////////////////////////////////
         character(:),allocatable :: config_file
             !!計算設定ファイル名.
-        type(slv_setting) :: settings_solver
-            !!ソルバ関連の設定ファイルのパラメータを扱う.
         type(case_setting) :: settings_case
             !!解析ケースに関連する設定パラメータ.
         type(bc_t) :: bc_types(6)
@@ -134,8 +132,7 @@ subroutine phase_pre_process(this, grid, fld)
     this%config_file = "config.txt"
     this%outdir_ = "output"
     if ( .not. mkdir(this%outdir_) )  print "(A)", "command skipped."
-    call read_config(this%config_file, this%settings_case, this%settings_solver, &
-                     bc_ids, bc_properties)
+    call read_config(this%config_file, this%settings_case, bc_ids, bc_properties)
     
     call get_mesh_from_file(this%settings_case%grid_file_name, imx, jmx, kmx, lengths, x, y, z)
     !座標配列が割り当てられているかどうかで分岐する.

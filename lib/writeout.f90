@@ -43,12 +43,12 @@ subroutine writeout_single_vtk_str_points(basename, nstep, extents, origin, spac
 
 end subroutine
 
-subroutine writeout_single_vtk_recti_grid(basename, nstep, extents, rp, holders, save_as_bin)
+subroutine writeout_single_vtk_recti_grid(basename, nstep, extents, x, y, z, holders, save_as_bin)
     !!データをvtk rectilinear gridフォーマットで書き出す.
     character(*),intent(in) :: basename
     integer(ip),intent(in) :: nstep
     integer(ip),intent(in) :: extents(3)
-    real(dp),intent(in) :: rp(:,:,:,:)
+    real(dp),intent(in) :: x(:), y(:), z(:)
     type(attrib_data_holder_t),intent(in),allocatable,optional :: holders(:)
     logical,intent(in),optional :: save_as_bin
 
@@ -58,7 +58,7 @@ subroutine writeout_single_vtk_recti_grid(basename, nstep, extents, rp, holders,
 
     fname = get_filename_with_digit_(basename, nstep, ".vtk")
     call writer%set_dimensions(extents)
-    call writer%set_coordinates(rp)
+    call writer%set_coordinates(x, y, z)
     if ( present(save_as_bin) ) then
         if ( save_as_bin ) call writer%save_as_binary()
     end if
