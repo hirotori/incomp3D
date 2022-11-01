@@ -269,7 +269,7 @@ subroutine calc_ghost_cell_centers(this)
     !j-right boundary
     j = this%jmax
     do k = 2, this%kmax
-    do i = 2, this%jmax
+    do i = 2, this%imax
         dx_(2) = this%dy(j)
         this%rc(:,i,j+1,k) = this%rc(:,i,j,k) + dx_(:)
     end do
