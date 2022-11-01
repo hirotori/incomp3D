@@ -129,7 +129,7 @@ subroutine phase_pre_process(this, grid, fld)
     integer(ip) :: bc_ids(2,6)
     real(dp) :: bc_properties(4,6)
 
-    real(dp),allocatable :: xyz(:,:,:,:)
+    real(dp),allocatable :: x(:), y(:), z(:)
     
     this%config_file = "config.txt"
     this%outdir_ = "output"
@@ -137,11 +137,11 @@ subroutine phase_pre_process(this, grid, fld)
     call read_config(this%config_file, this%settings_case, this%settings_solver, &
                      bc_ids, bc_properties)
     
-    call get_mesh_from_file(this%settings_case%grid_file_name, imx, jmx, kmx, lengths, xyz)
+    call get_mesh_from_file(this%settings_case%grid_file_name, imx, jmx, kmx, lengths, x, y, z)
     !座標配列が割り当てられているかどうかで分岐する.
-    if ( allocated(xyz) ) then
+    if ( allocated(x) .and. allocated(y) .and. allocated(z)) then
         allocate(rectilinear_mesh_t :: grid)
-        call grid%init(imx, jmx, kmx, xyz)
+        call grid%init(imx, jmx, kmx, x, y, z)
         this%is_equil_mesh = .false.
     else
         allocate(equil_mesh_t :: grid)
@@ -212,7 +212,8 @@ subroutine writeout_(this, grid, fld, basename, current_step)
         call writeout_single_vtk_str_points(basename, current_step, grid%get_extents(), & 
              [real(dp) :: 0, 0, 0], grid%get_equil_dx(), holders)
     else
-        call writeout_single_vtk_recti_grid(basename, current_step, grid%get_extents(), grid%rp, holders=holders)
+        call writeout_single_vtk_recti_grid(basename, current_step, grid%get_extents(), &
+                                            grid%xp, grid%yp, grid%zp, holders=holders)
     end if
     
 end subroutine

@@ -6,14 +6,14 @@ module mesh_reader_m
     character(*),parameter,public :: mesh_form_rectil = "rectilinear"
 contains
 
-subroutine get_mesh_from_file(path, imx, jmx, kmx, length, r)
+subroutine get_mesh_from_file(path, imx, jmx, kmx, length, x, y, z)
     character(*),intent(in) :: path
         !!ファイルパス.
     integer(ip),intent(out) :: imx, jmx, kmx
         !!格子点数.
     real(dp),intent(inout) :: length(3)
         !!寸法.
-    real(dp),allocatable,intent(inout) :: r(:,:,:,:)
+    real(dp),allocatable,intent(inout) :: x(:), y(:), z(:)
         !!節点座標.
 
     if ( file_exists(path) ) then
@@ -21,7 +21,7 @@ subroutine get_mesh_from_file(path, imx, jmx, kmx, length, r)
         select case(get_extention(path))
 
         case(".msh")
-            call original_format_reader(path, imx, jmx, kmx, length, r)
+            call original_format_reader(path, imx, jmx, kmx, length, x, y, z)
         
         case(".vtk")
             error stop "vtk format is unsupported."
@@ -35,13 +35,13 @@ subroutine get_mesh_from_file(path, imx, jmx, kmx, length, r)
 
 end subroutine
 
-subroutine original_format_reader(path, imx, jmx, kmx, lengths, r)
+subroutine original_format_reader(path, imx, jmx, kmx, lengths, x, y, z)
     !!独自規格のファイルフォーマットリーダー. 拡張子はmsh, プレーンテキストのみ.
     character(*),intent(in) :: path
         !!ファイルパス    
     integer,intent(inout) :: imx, jmx, kmx
     real(dp),intent(inout) :: lengths(3)
-    real(dp),allocatable,intent(inout) :: r(:,:,:,:)
+    real(dp),allocatable,intent(inout) :: x(:), y(:), z(:)
 
     character(128) format_, comment_
     integer unit, iostat
@@ -64,11 +64,13 @@ subroutine original_format_reader(path, imx, jmx, kmx, lengths, r)
 
             case(mesh_form_rectil)
                 !座標点.
-                allocate(r(3,imx,jmx,kmx))
+                allocate(x(imx))
+                allocate(y(jmx))
+                allocate(z(kmx))
                 do k = 1, kmx
                 do j = 1, jmx
                 do i = 1, imx
-                    read(unit,*,iostat=iostat,iomsg=iomsg) r(1:3,i,j,k)
+                    read(unit,*,iostat=iostat,iomsg=iomsg) x(i), y(j), z(k)
                 end do
                 end do    
                 end do

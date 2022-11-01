@@ -15,33 +15,37 @@ module rectilinear_mesh_m
     end type
     
 contains
-subroutine construct_from_meshdata(this, imx, jmx, kmx, r)
+subroutine construct_from_meshdata(this, imx, jmx, kmx, x, y, z)
     !!クラスを初期化する. 
     !!格子ファイルを読み取り, メンバ変数の構築を行う.
     class(rectilinear_mesh_t),intent(inout) :: this
-    real(dp),allocatable,intent(inout) :: r(:,:,:,:)
-        !!節点座標.
+    real(dp),allocatable,intent(inout) :: x(:)
+        !!節点x座標.
+    real(dp),allocatable,intent(inout) :: y(:)
+        !!節点y座標.
+    real(dp),allocatable,intent(inout) :: z(:)
+        !!節点z座標.
     integer(ip),intent(in) :: imx, jmx, kmx
 
     this%imax = imx
     this%jmax = jmx
     this%kmax = kmx
 
-    call move_alloc(r, this%rp)
+    call move_alloc(x, this%xp)
+    call move_alloc(y, this%yp)
+    call move_alloc(z, this%zp)
 
     call this%alloc_arrays()
 
     !セル中心の計算.
-    call calc_geometric_center(this%imax, this%jmax, this%kmax, this%rp, this%rc)
-
-    print"(A)", "Mesh constructed."
-    print "(g0, ' <= x <= ', g0)", minval(this%rc(1,2:,2:,2:)), maxval(this%rc(1,2:,2:,2:))
-    print "(g0, ' <= y <= ', g0)", minval(this%rc(2,2:,2:,2:)), maxval(this%rc(2,2:,2:,2:))
-    print "(g0, ' <= z <= ', g0)", minval(this%rc(3,2:,2:,2:)), maxval(this%rc(3,2:,2:,2:))
+    call calc_geometric_center(this%imax, this%jmax, this%kmax, this%xp, this%yp, this%zp, this%xc, this%yc, this%zc)
 
     call this%calc_geometry()
 
     call this%calc_ghost_cell_centers()
+
+    print "('-- Rectilinear Mesh created. --')"
+    call this%print_self()
 
 end subroutine 
 
@@ -54,13 +58,6 @@ subroutine calc_geometry(this)
     call this%calc_surface_areas_and_volumes()
     call this%check_geometry()
 
-    print "('---- Geometric Properties ----')"
-    print "('Sum Of Volume = ', g0.4)", sum(this%dv)
-    print "('Max Volume    = ', g0.4, ', at ', *(i0,:,',',1x))", maxval(this%dv), maxloc(this%dv)
-    print "('Min Volume    = ', g0.4, ', at ', *(i0,:,',',1x))", minval(this%dv), minloc(this%dv)
-    print "('Min Grid Spacing for i-dir. :: ', g0)", minval(this%dx(:))
-    print "('Min Grid Spacing for j-dir. :: ', g0)", minval(this%dy(:))
-    print "('Min Grid Spacing for k-dir. :: ', g0)", minval(this%dz(:))
 end subroutine
 
 
@@ -71,17 +68,18 @@ subroutine calc_grid_spacing(this)
     integer(ip) i, j, k
 
     do i = 2, this%imax
-        this%dx(i) = -this%rp(1,i-1,j,k) + this%rp(1,i,j,k)
+        this%dx(i) = -this%xp(i-1) + this%xp(i)
     end do
 
     do j = 2, this%jmax
-        this%dy(j) = -this%rp(2,i,j-1,k) + this%rp(2,i,j,k)
+        this%dy(j) = -this%yp(j-1) + this%yp(j)
     end do
 
     do k = 2, this%kmax
-        this%dz(k) = -this%rp(3,i,j,k-1) + this%rp(3,i,j,k)
+        this%dz(k) = -this%zp(k-1) + this%zp(k)
     end do
     
+
 end subroutine 
 
 

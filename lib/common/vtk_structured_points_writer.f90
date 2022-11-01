@@ -39,8 +39,6 @@ contains
         character(*),intent(in) :: path
 
         integer(IP) unit, n_, ic_
-
-        if(present(holder) .and. .not. allocated(holder)) error stop " unallocated holder recieved."
         
         call writeout_common(this, unit, path)
 
@@ -50,7 +48,7 @@ contains
             write(unit,"(A,1x,*(g0.6,1x))") ORIGIN_, this%origin
             write(unit,"(A,1x,*(g0.6,1x))") SPACING_, this%spacings
     
-            if ( allocated(holder) ) then
+            if ( present(holder) ) then
                 call writeout_common_field_data(this, unit, holder)
             end if    
         end if

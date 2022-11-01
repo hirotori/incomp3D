@@ -221,33 +221,33 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
     end do
     end do
 
-    block
-        integer unit
-        open(newunit=unit, file="test_pseudo_vel.dat", status="replace")
-        do k = 2, kmx
-        do j = 2, jmx
-        do i = 2, imx
-            write(unit,"(*(g0,1x))") fluid%velocity(:,i,j,k)
-        end do
-        end do    
-        end do
-        write(unit,*) "convec"
-        do k = 2, kmx
-        do j = 2, jmx
-        do i = 2, imx
-            write(unit,"(*(g0,1x))") conv(:,i,j,k)
-        end do
-        end do    
-        end do
-        write(unit,*) "diffusive"
-        do k = 2, kmx
-        do j = 2, jmx
-        do i = 2, imx
-            write(unit,"(*(g0,1x))") diff(:,i,j,k)
-        end do
-        end do    
-        end do
-    end block
+    ! block
+    !     integer unit
+    !     open(newunit=unit, file="test_pseudo_vel.dat", status="replace")
+    !     do k = 2, kmx
+    !     do j = 2, jmx
+    !     do i = 2, imx
+    !         write(unit,"(*(g0,1x))") fluid%velocity(:,i,j,k)
+    !     end do
+    !     end do    
+    !     end do
+    !     write(unit,*) "convec"
+    !     do k = 2, kmx
+    !     do j = 2, jmx
+    !     do i = 2, imx
+    !         write(unit,"(*(g0,1x))") conv(:,i,j,k)
+    !     end do
+    !     end do    
+    !     end do
+    !     write(unit,*) "diffusive"
+    !     do k = 2, kmx
+    !     do j = 2, jmx
+    !     do i = 2, imx
+    !         write(unit,"(*(g0,1x))") diff(:,i,j,k)
+    !     end do
+    !     end do    
+    !     end do
+    ! end block
 
 end subroutine
 
@@ -460,12 +460,12 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
         !----diffusion----
         !::::2nd order central
         if ( ld == 1 ) then
-            dif_w(:) = (  v0(:,i-1,j  ,k  ) - v0(:,i  ,j  ,k  ))/(-grid%rc(1,i-1,j  ,k  ) + grid%rc(1,i  ,j  ,k  ))
-            dif_e(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i+1,j  ,k  ))/(-grid%rc(1,i  ,j  ,k  ) + grid%rc(1,i+1,j  ,k  ))
-            dif_s(:) = (  v0(:,i  ,j-1,k  ) - v0(:,i  ,j  ,k  ))/(-grid%rc(2,i  ,j-1,k  ) + grid%rc(2,i  ,j  ,k  ))
-            dif_n(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j+1,k  ))/(-grid%rc(2,i  ,j  ,k  ) + grid%rc(2,i  ,j+1,k  ))
-            dif_b(:) = (  v0(:,i  ,j  ,k-1) - v0(:,i  ,j  ,k  ))/(-grid%rc(3,i  ,j  ,k-1) + grid%rc(3,i  ,j  ,k  ))
-            dif_t(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j  ,k+1))/(-grid%rc(3,i  ,j  ,k  ) + grid%rc(3,i  ,j  ,k+1))
+            dif_w(:) = (  v0(:,i-1,j  ,k  ) - v0(:,i  ,j  ,k  ))/(-grid%xc(i-1) + grid%xc(i  ))
+            dif_e(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i+1,j  ,k  ))/(-grid%xc(i  ) + grid%xc(i+1))
+            dif_s(:) = (  v0(:,i  ,j-1,k  ) - v0(:,i  ,j  ,k  ))/(-grid%yc(j-1) + grid%yc(j  ))
+            dif_n(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j+1,k  ))/(-grid%yc(j  ) + grid%yc(j+1))
+            dif_b(:) = (  v0(:,i  ,j  ,k-1) - v0(:,i  ,j  ,k  ))/(-grid%zc(k-1) + grid%zc(k  ))
+            dif_t(:) = (- v0(:,i  ,j  ,k  ) + v0(:,i  ,j  ,k+1))/(-grid%zc(k  ) + grid%zc(k+1))
 
         else if ( ld == 2 ) then
             !面勾配*法線を計算する. セル勾配から面へ内挿する. 境界では片側差分となっている.
