@@ -39,6 +39,7 @@ module fractional_step_m
 
         real(dp),allocatable :: v0(:,:,:,:)
             !!既知時間段階の速度.
+            !!@note 初期化は process_before_loop内で行われる.
 
         !スレッド並列のため作成. 
         integer(ip),allocatable,private :: c_red(:,:)
@@ -47,9 +48,11 @@ module fractional_step_m
         integer(ip),allocatable,private :: c_black(:,:)
             !!Poisson方程式をred-black SORで解くための, カラーリング配列.
             !!mod(i+j+k,2)/=0となるもの.
+        character(80) :: method_name = "Fractional Step (Euler Expl.)"
         contains
         procedure :: init => init_solver 
-        procedure :: load_setting
+        procedure,private :: load_setting_from_file, load_setting_from_object
+        generic,public :: load_setting => load_setting_from_file, load_setting_from_object
         procedure :: process_before_loop
         procedure :: proceed_time_step
         procedure :: predict_pseudo_velocity
@@ -87,7 +90,7 @@ subroutine slvr_init_common(this, fld, grd, setting_case)
 
     call this%load_setting()
 
-    print "('   -------- Fractional Step Method ---------    ')"
+    print "('   -------- ', A, ' ---------    ')", trim(adjustl(this%method_name))
     print "('      - 3D unsteady problem                     ')"
     print "('      - Convection : ', A)", merge("Up-wind", "Central", this%settings%conv_type=="ud")
     print "('      - Diffusion  : ', A)", merge("compact", " large ", this%settings%diff_type==1)  
@@ -164,7 +167,7 @@ subroutine init_for_parallel_computing(this, grd)
 
 end subroutine
 
-subroutine load_setting(this)
+subroutine load_setting_from_file(this)
     !!保存したソルバ設定ファイルを開き, 設定を反映させる.
     use IO_operator_m
     class(solver_fs),intent(inout) :: this
@@ -187,6 +190,14 @@ subroutine load_setting(this)
 
     this%settings = settings
 
+end subroutine
+
+subroutine load_setting_from_object(this, settings)
+    !!コンフィグ構造体からパラメータの設定を反映させる.
+    class(solver_fs),intent(inout) :: this
+    type(base_slv_setting_t),intent(in) :: settings
+
+    this%settings = settings
 end subroutine
 
 subroutine process_before_loop(this, grd, fld, settings_case, bc_types)
@@ -234,9 +245,8 @@ subroutine proceed_time_step(this, grid, fluid, bc_types, dt, p_ref, sim_diverge
     real(dp),intent(in) :: p_Ref
     logical,intent(out) :: sim_diverged
 
-    call this%predict_pseudo_velocity(grid, fluid, dt, this%v0, bc_types)
+    call this%predict_pseudo_velocity(grid, fluid, dt, bc_types)
 
-    !中間速度に対する境界条件の適用. ソルバの外部で行う理由は, この処理が共通なため.
     call boundary_condition_velocity(grid%get_extents(), fluid%velocity, bc_types)
 
     call this%calc_corrected_velocity(grid, fluid, dt, p_ref, bc_types, sim_diverged)
@@ -248,7 +258,7 @@ subroutine proceed_time_step(this, grid, fluid, bc_types, dt, p_ref, sim_diverge
 
 end subroutine
 
-subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
+subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     !!中間速度を計算する.
     !!@note 初期状態から計算の場合は, ループ開始前に速度の初期値で面に垂直な流速成分を更新しておく必要がある.
     class(solver_fs),intent(inout) :: this
@@ -256,8 +266,6 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
     type(fluid_field_t),intent(inout) :: fluid
     real(DP),intent(in) :: del_t
         !!時間刻み
-    real(DP),intent(in) :: v0(:,:,:,:)
-        !!既知時間段階の速度
     type(bc_t),intent(in) :: bc_types(:)
     
     integer(ip) imx, jmx, kmx, i, j, k
@@ -273,13 +281,13 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, v0, bc_types)
 
     !フラックスを作ってから後で右辺を計算する. メモリ量に不安がある場合は今まで通り上の方法で. 
     !!@todo 境界条件を組み込むかどうか.
-    call calc_convective_and_diffusive_flux(this, grid, fluid, v0, conv, diff)
+    call calc_convective_and_diffusive_flux(this, grid, fluid, this%v0, conv, diff)
 
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
         rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
-        fluid%velocity(:,i,j,k) = v0(:,i,j,k) - & 
+        fluid%velocity(:,i,j,k) = this%v0(:,i,j,k) - & 
                                del_t*(conv(:,i,j,k) - rei*diff(:,i,j,k) - fluid%vol_force(:)*grid%dv(i,j,k))/grid%dv(i,j,k)
 
     end do

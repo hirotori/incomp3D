@@ -5,7 +5,7 @@ add_library(incomp3d STATIC
  case_common.f90
  fluid_field.f90
  fractional_step.f90
-#  fractional_step_implicit.f90
+ fractional_step_implicit.f90
  mesh_reader.f90
  mesh.f90
  rectilinear_mesh.f90

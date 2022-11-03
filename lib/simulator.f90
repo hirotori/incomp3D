@@ -1,7 +1,7 @@
 module simulator_m
     use floating_point_parameter_m, only : ip, dp
     use case_common_m
-    use boundary_condition_m
+    ! use boundary_condition_m
     use mesh_m
     use fluid_field_m
     use fractional_step_m
@@ -36,7 +36,7 @@ subroutine run(this, current_case, solver)
     integer(ip) nstep
     integer(ip) :: nthread = 1
         !!コンソールに表示するための並列スレッド数. 並列化されない場合はシングルスレッドを表す1.
-    real(dp) dt, re
+    real(dp) dt
     character(*),parameter :: time_bar = repeat("=", 35)
     type(date_t) :: start_date, end_date
     logical sim_diverged
@@ -60,7 +60,6 @@ subroutine run(this, current_case, solver)
     call current_case%phase_writeout(grid, fluid, 0)
 
     dt = current_case%settings_case%dt
-    re = current_case%settings_case%reynolds_number
     do nstep = current_case%settings_case%nstart, current_case%settings_case%nend
         !!メインループでは,  1.中間速度の計算, 2.圧力補正の順に行う.
         print "(A)", time_bar

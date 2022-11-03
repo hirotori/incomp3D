@@ -3,7 +3,7 @@ module fractional_step_implicit_m
     use fluid_field_m
     use mesh_m
     use fractional_step_m, only : solver_fs, mat_a, slvr_init_common, calc_convective_and_diffusive_flux
-    use setting_parameter_m, only : slv_setting, case_setting
+    use setting_parameter_m, only : case_setting
     use boundary_condition_m, only : bc_t, boundary_condition_velocity
     implicit none
     
@@ -11,6 +11,7 @@ module fractional_step_implicit_m
 
     type,extends(solver_fs) :: solver_fs_imp_t
         !!陰解法Fractional stepクラス. 粘性項のみをクランク･ニコルソン法で評価する半陰解法.
+        !!@note おそらく, 第二段階の離散化が厳密ではない.
         !!@warning 現状, diffus_type = 2には対応出来ていない. diffus_type = 2を選ぶと恐らく破綻する(整合性がないので).
         type(mat_a) :: matrix_v
         real(dp),allocatable :: rhs_(:,:,:,:)
@@ -42,21 +43,22 @@ subroutine set_parameter(this, iter_max, tolerance, alpha)
     this%alpha = alpha
 end subroutine
 
-subroutine init_solver_2(this, fld, grd, settings_slv, setting_case)
+subroutine init_solver_2(this, fld, grd, setting_case)
     !!ソルバを初期化する.
     class(solver_fs_imp_t),intent(inout) :: this
     type(fluid_field_t),intent(in) :: fld
-    type(rectilinear_mesh_t),intent(in) :: grd
-    type(slv_setting),intent(in) :: settings_slv
+    class(equil_mesh_t),intent(in) :: grd
     type(case_setting),intent(in) :: setting_case
 
     integer(ip) mx(3)
 
     mx(:) = grd%get_extents()
+    this%method_name = "Fractional Step Implicit(CN)"
 
-    call slvr_init_common(this, fld, grd, settings_slv, setting_case)
+    call slvr_init_common(this, fld, grd, setting_case)
     
-    call set_matrix_(this%matrix_v, grd%ds, grd%dv, grd%dx, setting_case%reynolds_number, setting_case%dt, this%diffus_type)
+    call set_matrix_(this%matrix_v, grd%dsx, grd%dsy, grd%dsz, &
+        grd%dv, grd%xc, grd%yc, grd%zc, setting_case%reynolds_number, setting_case%dt)
     allocate(this%rhs_(1:3,2:mx(1),2:mx(2),2:mx(3)))
 
     print "('   - velocity linear solver : SOR')"
@@ -65,24 +67,13 @@ subroutine init_solver_2(this, fld, grd, settings_slv, setting_case)
 
 end subroutine
 
-subroutine predict_pseudo_velocity(this, grid, del_t, re, force, v0, v, mi, mj, mk, dudr, bc_types)
+subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     !!中間速度を計算する.
     class(solver_fs_imp_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
+    type(fluid_field_t),intent(inout) :: fluid
     real(DP),intent(in) :: del_t
         !!時間刻み
-    real(DP),intent(in) :: re
-        !!レイノルズ数
-    real(DP),intent(in) :: force(3)
-        !!体積力
-    real(DP),intent(in) :: v0(:,:,:,:)
-        !!既知時間段階の速度
-    real(DP),intent(out) :: v(:,:,:,:)
-        !!更新される速度(中間段階)
-    real(DP),intent(inout) :: mi(:,2:,2:), mj(2:,:,2:), mk(2:,2:,:)
-        !!面に垂直な流速成分.
-    real(dp),intent(in) :: dudr(:,:,:,:,:)
-        !!速度勾配テンソル.
     type(bc_t),intent(in) :: bc_types(:)
     
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:)
@@ -94,31 +85,30 @@ subroutine predict_pseudo_velocity(this, grid, del_t, re, force, v0, v, mi, mj, 
     allocate(conv(3,2:imx,2:jmx,2:kmx))
     allocate(diff(3,2:imx,2:jmx,2:kmx))    
         
-    call calc_convective_and_diffusive_flux(this, grid%get_extents(), grid%ds, grid%dv, grid%dx, re, v0, mi, mj, mk, dudr, conv, diff)
-
-    rei = 1.0_dp/re
+    call calc_convective_and_diffusive_flux(this, grid, fluid, this%v0, conv, diff)
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
-        this%rhs_(:,i,j,k) = v0(:,i,j,k)*grid%dv - del_t*(conv(:,i,j,k) - 0.5_dp*rei*diff(:,i,j,k) - force(:)*grid%dv)
+        rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
+        this%rhs_(:,i,j,k) = this%v0(:,i,j,k)*grid%dv(i,j,k) & 
+        - del_t*(conv(:,i,j,k) - 0.5_dp*rei*diff(:,i,j,k) - fluid%vol_force(:)*grid%dv(i,j,k))
     end do
     end do        
     end do
 
-    call calc_pseudo_velocity_common_core(this, grid%get_extents(), grid%dx, v, bc_types)
+    call calc_pseudo_velocity_common_core(this, grid%get_extents(), fluid%velocity, bc_types)
 
     !@TODO 発散した後の処理. 
 
 
 end subroutine
 
-subroutine calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
+subroutine calc_pseudo_velocity_common_core(this, extents, v, bc_types)
     !!時間陰解法に共通の処理. 連立方程式を解いて新しい中間速度を求める.
     !!係数行列と右辺は外部で計算されている前提.
     use,intrinsic :: ieee_arithmetic, only : ieee_is_nan
     class(solver_fs_imp_t),intent(inout) :: this
     integer(ip),intent(in) :: extents(3)
-    real(dp),intent(in) :: dx(3)
     real(dp),intent(inout) :: v(:,:,:,:)
     type(bc_t),intent(in) :: bc_types(:)
 
@@ -146,10 +136,10 @@ subroutine calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
         do i = 2, imx
             !@TODO large stencilの場合の対応. ステンシルが一つ飛びになる.
             v(l,i,j,k) = (1.0_dp - this%alpha)*v(l,i,j,k) &
-                                 + this%alpha*(this%rhs_(l,i,j,k) &
-                                 - this%matrix_v%aw*v(l,i-1,j  ,k  ) - this%matrix_v%ae*v(l,i+1,j  ,k  ) &
-                                 - this%matrix_v%as*v(l,i  ,j-1,k  ) - this%matrix_v%an*v(l,i  ,j+1,k  ) &
-                                 - this%matrix_v%ab*v(l,i  ,j  ,k-1) - this%matrix_v%at*v(l,i  ,j  ,k+1))/this%matrix_v%ap
+              + this%alpha*(this%rhs_(l,i,j,k) &
+              - this%matrix_v%a_nb(1,i,j,k)*v(l,i-1,j,k) - this%matrix_v%a_nb(2,i,j,k)*v(l,i+1,j,k) &
+              - this%matrix_v%a_nb(3,i,j,k)*v(l,i,j-1,k) - this%matrix_v%a_nb(4,i,j,k)*v(l,i,j+1,k) &
+              - this%matrix_v%a_nb(5,i,j,k)*v(l,i,j,k-1) - this%matrix_v%a_nb(6,i,j,k)*v(l,i,j,k+1))/this%matrix_v%a_p(i,j,k)
             ! point jacobi
             ! v(l,i,j,k) = (this%rhs_(l,i,j,k) &
             ! - this%matrix_v%aw*v_tmp(l,i-1,j  ,k  ) - this%matrix_v%ae*v_tmp(l,i+1,j  ,k  ) &
@@ -159,7 +149,7 @@ subroutine calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
         end do        
         end do
     
-        call boundary_condition_velocity(extents, v, dx, bc_types)
+        call boundary_condition_velocity(extents, v, bc_types)
 
         resid_ = 0.0_dp
         den_ = 0.0_dp
@@ -207,31 +197,75 @@ subroutine calc_pseudo_velocity_common_core(this, extents, dx, v, bc_types)
 
 end subroutine
 
-subroutine set_matrix_(mat, ds, dv, dx, re, dt, stencil_type)
+! subroutine set_matrix_(mat, ds, dv, dx, re, dt, stencil_type)
+subroutine set_matrix_(mat, dsx, dsy, dsz, dv, xc, yc, zc, re, dt)
     !!係数行列を設定する.
     type(mat_a),intent(inout) :: mat
-    real(DP),intent(in) :: ds(3)
+    real(DP),intent(in) :: dsx(2:,2:), dsy(2:,2:), dsz(2:,2:)
         !!検査面の大きさ
-    real(DP),intent(in) :: dv
+    real(DP),intent(in) :: dv(2:,2:,2:)
         !!検査体積の大きさ
-    real(DP),intent(in) :: dx(3)
-        !!検査体積の幅
+    real(DP),intent(in) :: xc(:)
+        !!セル中心のx座標.
+    real(DP),intent(in) :: yc(:)
+        !!セル中心のy座標.
+    real(DP),intent(in) :: zc(:)
+        !!セル中心のz座標.
     real(DP),intent(in) :: re
         !!レイノルズ数
     real(DP),intent(in) :: dt
         !!時間刻み
-    integer(ip),intent(in) :: stencil_type
-        !!large stencilかそうで無いかを区別する.
 
+    integer i, j, k
+    integer imx, jmx, kmx
+    real(dp) anb_, dx_
+
+    !間接的に取得する.
+    imx = ubound(dv, dim = 1)
+    jmx = ubound(dv, dim = 2)
+    kmx = ubound(dv, dim = 3)
+    
     !@TODO large stencilの場合係数が微妙に変わる.それの実装.
-    mat%ae = -0.5_dp*dt*ds(1)/(re*dx(1))
-    mat%aw = mat%ae
-    mat%an = -0.5_dp*dt*ds(2)/(re*dx(2))
-    mat%as = mat%an
-    mat%at = -0.5_dp*dt*ds(3)/(re*dx(3))
-    mat%ab = mat%at
+    do k = 2, kmx
+    do j = 2, jmx
+    do i = 1, imx
+        dx_ = -xc(i) + xc(i+1)
+        anb_ = -0.5_dp*dt*dsx(j,k)/(re*dx_)
+        if (i /= 1  ) mat%a_nb(2,i  ,j,k) = anb_
+        if (i /= imx) mat%a_nb(1,i+1,j,k) = anb_
+    end do
+    end do        
+    end do
 
-    mat%ap = dv - (mat%ae + mat%aw + mat%an + mat%as + mat%at + mat%ab)
+    do k = 2, kmx
+    do j = 1, jmx
+    do i = 2, imx
+        dx_ = -yc(j) + yc(j+1)
+        anb_ = -0.5_dp*dt*dsy(i,k)/(re*dx_)
+        if (j /= 1  ) mat%a_nb(4,i,j  ,k) = anb_
+        if (j /= jmx) mat%a_nb(3,i,j+1,k) = anb_
+    end do
+    end do        
+    end do
+
+    do k = 1, kmx
+    do j = 2, jmx
+    do i = 2, imx
+        dx_ = -zc(k) + zc(k+1)
+        anb_ = -0.5_dp*dt*dsz(i,j)/(re*dx_)
+        if (k /= 1  ) mat%a_nb(6,i,j,k  ) = anb_
+        if (k /= kmx) mat%a_nb(5,i,j,k+1) = anb_
+    end do
+    end do        
+    end do
+
+    do k = 2, kmx
+    do j = 2, jmx
+    do i = 2, imx
+        mat%a_p(i,j,k) = dv(i,j,k) - sum(mat%a_nb(:,i,j,k))
+    end do
+    end do        
+    end do
 
 
 end subroutine
