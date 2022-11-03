@@ -37,4 +37,10 @@ if(OpenMP_Fortran_FOUND)
         incomp3d_util
         OpenMP::OpenMP_Fortran 
     )
+
+else()
+    # OpenMPをサポートしない場合.
+    target_link_libraries(incomp3d 
+        incomp3d_util
+    )
 endif()
