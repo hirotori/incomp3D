@@ -16,6 +16,8 @@ subroutine get_mesh_from_file(path, imx, jmx, kmx, length, x, y, z)
     real(dp),allocatable,intent(inout) :: x(:), y(:), z(:)
         !!節点座標.
 
+    print "('>>>current mesh file :: ')", trim(adjustl(path))
+
     if ( file_exists(path) ) then
 
         select case(get_extention(path))
