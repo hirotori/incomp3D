@@ -1,6 +1,5 @@
-1.1   !current config file version.
-41 9 2  !grid points (imax,jmax,kmax)
-10.0 2.00 2.00  !length (x,y,z)     
+1.4   !current config file version.
+poiseuille.msh
 1 10 1  !time step (start,end,write_interval
 0.001 !time spacing
 100 !Reynolds Number

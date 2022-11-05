@@ -1,6 +1,5 @@
-1.1   ! current config file version.
-33 33 2  !grid points (imax,jmax,kmax)
-3.141592653 3.141592653 0.01  !length (x,y,z)     
+1.4   ! current config file version.
+TaylorGreen.msh
 0 1000 100  !time step (start,end,write_interval
 0.001 !time spacing
 100 !Reynolds Number

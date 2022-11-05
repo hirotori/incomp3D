@@ -24,7 +24,7 @@ subroutine add_on_pre_process(this, grid, fld)
     !!追加で初期状態を管理したい場合に呼び出す.
     use system_operator_m
     class(case_cavity_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(inout) :: grid
+    type(equil_mesh_t),intent(inout) :: grid
     type(fluid_field_t),intent(inout) :: fld
 
     !!セル数が奇数個でない場合ストップさせる.
@@ -45,7 +45,7 @@ end subroutine
 subroutine phase_post_process(this, grid, fld)
     !!追加で初期状態を管理したい場合に呼び出す.
     class(case_cavity_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    type(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
 
     !!キャビティの重心を通る, 鉛直線方向の速度x成分と, 水平線方向の速度y成分をファイルに書き出す.
@@ -68,7 +68,7 @@ subroutine phase_post_process(this, grid, fld)
             write(unit,"(A)") "y u"
             do k = 2, extents(3)
             do j = 2, extents(2)
-                write(unit, "(2(g0,1x))") grid%rc(2,x_gc,j,k), fld%velocity(1,x_gc,j,k)
+                write(unit, "(2(g0,1x))") grid%yc(j), fld%velocity(1,x_gc,j,k)
             end do
             end do
         close(unit)
@@ -78,7 +78,7 @@ subroutine phase_post_process(this, grid, fld)
             write(unit,"(A)") "x v"
             do k = 2, extents(3)
             do i = 2, extents(1)
-                write(unit, "(2(g0,1x))") grid%rc(1,i,y_gc,k), fld%velocity(2,i,y_gc,k)
+                write(unit, "(2(g0,1x))") grid%xc(i), fld%velocity(2,i,y_gc,k)
             end do
             end do
         close(unit)
@@ -93,7 +93,7 @@ subroutine phase_writeout(this, grid, fld, nstep)
     !!@note 現状, 書き出しサブルーチンは本モジュールのプライベートルーチンとなっている.
     !!@todo 書き出しサブルーチンの隔離.
     class(case_cavity_t),intent(in) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    type(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
     integer(ip),intent(in) :: nstep
     character(:),allocatable :: fname
@@ -108,7 +108,7 @@ subroutine writeout_(this, grid, fld, basename, current_step)
     !!データを書き出す. フォーマットはvtkファイルとなっている.
     !!@note データ節約のため格子座標データを必要としないvtk structured points フォーマットを使用している.
     class(case_cavity_t),intent(in) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    type(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
     character(*),intent(in) :: basename
     integer(ip),intent(in) :: current_step
@@ -125,7 +125,8 @@ subroutine writeout_(this, grid, fld, basename, current_step)
     call holders(3)%register_vector(this%vorticity_, [2,2,2], grid%get_extents())
 
 
-    call writeout_single_vtk_str_points(basename, current_step, grid%get_extents(), [real(dp) :: 0, 0, 0], grid%dx, holders)
+    call writeout_single_vtk_str_points(basename, current_step, grid%get_extents(), [real(dp) :: 0, 0, 0], &
+                                        grid%get_equil_dx(), holders)
     
 end subroutine
     

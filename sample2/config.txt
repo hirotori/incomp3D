@@ -1,7 +1,6 @@
-1.1   ! current config file version.
-32 32 2  !grid points (imax,jmax,kmax)
-1.0 1.00 0.01  !length (x,y,z)     
-0 30000 100  !time step (start,end,write_interval
+1.4   ! current config file version.
+cavity.msh
+0 1 100  !time step (start,end,write_interval
 0.001 !time spacing
 100 !Reynolds Number
 0.0 0.0 0.0  !body force (x,y,z) 

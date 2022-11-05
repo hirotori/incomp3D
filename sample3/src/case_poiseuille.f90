@@ -21,7 +21,7 @@ contains
 subroutine add_on_pre_process(this, grid, fld)
     !!追加で初期状態を管理したい場合に呼び出す.
     class(case_poiseuille_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(inout) :: grid
+    class(equil_mesh_t),intent(inout) :: grid
     type(fluid_field_t),intent(inout) :: fld
 
     integer(ip) i, j, k, imx, jmx, kmx
@@ -35,7 +35,7 @@ subroutine add_on_pre_process(this, grid, fld)
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
-        y_ = grid%rc(2,i,j,k)
+        y_ = grid%yc(j)
         this%exact(1,i,j,k) = 1.5_dp*(y_*(2.0_dp - y_))
     end do
     end do    
@@ -49,7 +49,7 @@ end subroutine
 subroutine phase_post_process(this, grid, fld)
     !!現時間段階の計算が終わった後に呼び出される. 
     class(case_poiseuille_t),intent(inout) :: this
-    type(rectilinear_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
 
     real(dp) resid_, den_

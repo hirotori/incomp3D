@@ -1,0 +1,3 @@
+equil-spaced
+1024 1024 2  !grid points (imax,jmax,kmax)
+1.0 1.00 0.01  !length (x,y,z)     
