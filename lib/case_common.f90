@@ -289,8 +289,8 @@ subroutine check_result(imx, jmx, kmx, dsi, dsj, dsk, dv, v, p)
     do j = 2, jmx
     do i = 2, imx
         ds(1) = dsi(j,k)
-        ds(2) = dsj(i,j)
-        ds(3) = dsk(i,k)
+        ds(2) = dsj(i,k)
+        ds(3) = dsk(i,j)
         uf(1) = -0.5_dp*(v(1,i-1,j  ,k  ) + v(1,i  ,j  ,k  ))*ds(1)
         uf(2) =  0.5_dp*(v(1,i  ,j  ,k  ) + v(1,i+1,j  ,k  ))*ds(1)
         uf(3) = -0.5_dp*(v(2,i  ,j-1,k  ) + v(2,i  ,j  ,k  ))*ds(2)
