@@ -38,6 +38,7 @@ program pois_mesh
         zp(k) = real(k - 1, dp)*dz
     end do
 
+    a_ = 0.95_dp
     do j = 1, jmax
         xi_ = -1.0_dp + 2.0_dp*real(j - 1, dp)/real(jmax - 1, dp)
         yp(j) = tanh(xi_*atanh(a_))/a_ + 1.0_dp
