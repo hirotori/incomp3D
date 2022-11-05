@@ -64,7 +64,7 @@ subroutine read_config_core(fname, setting_c, bc_ids, bc_properties)
             error stop
         end if
     end block
-    read(unit,*,err=99) tmp_ ; setting_c%grid_file_name = trim(adjustl(tmp_))
+    read(unit,"(A)",err=99) tmp_ ; setting_c%grid_file_name = trim(adjustl(tmp_))
     read(unit,*,err=99) setting_c%nstart, setting_c%nend, setting_c%nwrite
     read(unit,*,err=99) setting_c%dt
     read(unit,*,err=99) setting_c%reynolds_number
