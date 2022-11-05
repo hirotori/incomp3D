@@ -47,7 +47,8 @@ program pois_mesh
         character(32) tmp_
         write(tmp_,"(A,'_', *(i0,:,'_'))") "poiseuille", icmax, jcmax, kcmax
 
-        call writeout_as_msh_format(trim(adjustl(tmp_)), [imax,jmax,kmax], xp, yp, zp)
+        call writeout_as_msh_format(trim(adjustl(tmp_)), [imax,jmax,kmax], "For Poiseuille flow", &
+            xp, yp, zp)
 
     end block
 end program pois_mesh

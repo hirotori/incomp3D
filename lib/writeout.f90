@@ -72,10 +72,11 @@ subroutine writeout_single_vtk_recti_grid(basename, nstep, extents, x, y, z, hol
 
 end subroutine
 
-subroutine writeout_as_msh_equil_format(basename, extents, x, y, z)
+subroutine writeout_as_msh_equil_format(basename, extents, comment, x, y, z)
     !!等間隔格子をオリジナルフォーマット(.msh)で書き出す.
     character(*),intent(in) :: basename
     integer(ip),intent(in) :: extents(3)
+    character(*),intent(in) :: comment
     real(dp),intent(in) :: x, y, z
         !!領域の寸法.
 
@@ -83,16 +84,18 @@ subroutine writeout_as_msh_equil_format(basename, extents, x, y, z)
 
     open(newunit=unit, file=trim(basename)//".msh", status="replace")
     write(unit, "(A)") mesh_form_equil
+    write(unit, "(A)") comment
     write(unit, "(3(i0,1x))") extents(1:3) 
     write(unit, "(3(g0,1x))") x, y, z
     close(unit) 
 
 end subroutine
 
-subroutine writeout_as_msh_rectil_format(basename, extents, x, y, z)
+subroutine writeout_as_msh_rectil_format(basename, extents, comment, x, y, z)
     !!不等間隔格子をオリジナルフォーマット(.msh)で書き出す.
     character(*),intent(in) :: basename
     integer(ip),intent(in) :: extents(3)
+    character(*),intent(in) :: comment
     real(dp),intent(in) :: x(:), y(:), z(:)
         !!節点座標配列.
     integer i, j, k
@@ -100,6 +103,7 @@ subroutine writeout_as_msh_rectil_format(basename, extents, x, y, z)
 
     open(newunit=unit, file=trim(basename)//".msh", status="replace")
     write(unit, "(A)") mesh_form_rectil
+    write(unit, "(A)") comment
     write(unit, "(3(i0,1x))") extents(1:3) 
     do k = 1, extents(3)
     do j = 1, extents(2)

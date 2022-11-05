@@ -1,3 +1,4 @@
 equil-spaced
+for Taylor Green Vortex 2D
 33 33 2  !grid points (imax,jmax,kmax)
 3.141592653 3.141592653 0.01  !length (x,y,z)
