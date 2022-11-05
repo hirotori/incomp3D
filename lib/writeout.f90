@@ -3,7 +3,13 @@ module output_m
     use vtk_field_data_m
     use vtk_structured_points_writer_m
     use vtk_rectilinear_grid_m
+    use mesh_reader_m, only : mesh_form_equil, mesh_form_rectil
     implicit none
+
+    interface writeout_as_msh_format
+        module procedure :: writeout_as_msh_equil_format
+        module procedure :: writeout_as_msh_rectil_format
+    end interface
 
 contains
 function get_filename_with_digit_(filename_no_ext, digit, ext) result(filename_)
@@ -63,6 +69,47 @@ subroutine writeout_single_vtk_recti_grid(basename, nstep, extents, x, y, z, hol
         if ( save_as_bin ) call writer%save_as_binary()
     end if
     call writer%writeout(fname, holders)
+
+end subroutine
+
+subroutine writeout_as_msh_equil_format(basename, extents, x, y, z)
+    !!等間隔格子をオリジナルフォーマット(.msh)で書き出す.
+    character(*),intent(in) :: basename
+    integer(ip),intent(in) :: extents(3)
+    real(dp),intent(in) :: x, y, z
+        !!領域の寸法.
+
+    integer unit
+
+    open(newunit=unit, file=trim(basename)//".msh", status="replace")
+    write(unit, "(A)") mesh_form_equil
+    write(unit, "(3(i0,1x))") extents(1:3) 
+    write(unit, "(3(g0,1x))") x, y, z
+    close(unit) 
+
+end subroutine
+
+subroutine writeout_as_msh_rectil_format(basename, extents, x, y, z)
+    !!不等間隔格子をオリジナルフォーマット(.msh)で書き出す.
+    character(*),intent(in) :: basename
+    integer(ip),intent(in) :: extents(3)
+    real(dp),intent(in) :: x(:), y(:), z(:)
+        !!節点座標配列.
+    integer i, j, k
+    integer unit
+
+    open(newunit=unit, file=trim(basename)//".msh", status="replace")
+    write(unit, "(A)") mesh_form_rectil
+    write(unit, "(3(i0,1x))") extents(1:3) 
+    do k = 1, extents(3)
+    do j = 1, extents(2)
+    do i = 1, extents(1)
+        write(unit, "(3(g0,1x))") x(i), y(j), z(k)
+    end do
+    end do    
+    end do
+
+    close(unit) 
 
 end subroutine
 
