@@ -57,13 +57,15 @@ subroutine init_solver_2(this, fld, grd, setting_case)
 
     call slvr_init_common(this, fld, grd, setting_case)
     
+    allocate(this%matrix_v%a_nb(1:6,2:mx(1),2:mx(2),2:mx(3)))
+    allocate(this%matrix_v%a_p(2:mx(1),2:mx(2),2:mx(3)))
     call set_matrix_(this%matrix_v, grd%dsx, grd%dsy, grd%dsz, &
         grd%dv, grd%xc, grd%yc, grd%zc, setting_case%reynolds_number, setting_case%dt)
     allocate(this%rhs_(1:3,2:mx(1),2:mx(2),2:mx(3)))
 
-    print "('   - velocity linear solver : SOR')"
-    print "('   - tolerance              : ', g0)", this%tolerance
-    print "('   - accelaration           : ', g0)", this%alpha
+    print "('- velocity linear solver : SOR')"
+    print "('- tolerance              : ', g0)", this%tolerance
+    print "('- accelaration           : ', g0)", this%alpha
 
 end subroutine
 
