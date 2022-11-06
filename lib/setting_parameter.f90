@@ -29,6 +29,7 @@ subroutine read_config(fname, c_setting, bc_ids, bc_properties)
         !!速度/圧力境界条件. 速度, 圧力の順番.
     real(dp),intent(out) :: bc_properties(4,6)
 
+    print "(A)", ">>> Loading config file .."
 
 
     call read_config_core(fname, c_setting, bc_ids, bc_properties)
@@ -74,6 +75,7 @@ subroutine read_config_core(fname, setting_c, bc_ids, bc_properties)
     do l = 1, 6
         read(unit,*,err=99) bc_ids(:,l), bc_properties(:,l)        
     end do
+    print "('======= from config file =======')"
     print "('time step : ',i0, '<= n <=', i0)", setting_c%nstart, setting_c%nend
     print "('delta t   : ',g0.5)", setting_c%dt
     print "('Re        : ',g0)", setting_c%reynolds_number

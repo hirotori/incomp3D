@@ -1,7 +1,8 @@
 module IO_operator_m
     use,intrinsic :: iso_fortran_env, only : int32, real64
     implicit none
-    
+    character(*),parameter,public :: LF = new_line("A")
+        !!改行文字列.
 contains
 
 logical function open_text_file(unit, filename, title, unformatted) result(is_already_opened)
@@ -101,7 +102,7 @@ function get_unit_number(filename) result(unit_number)
     open (newunit=unit_number, file=filename)
 end function get_unit_number
 
-logical function open_as_binary(unit, path, access, big_endian) result(opened)
+logical function open_as_binary(unit, path, access, big_endian, status) result(opened)
     !!ファイルをバイナリで開く. 
     integer,intent(out) :: unit
     character(*),intent(in) :: path
@@ -109,21 +110,54 @@ logical function open_as_binary(unit, path, access, big_endian) result(opened)
         !!`sequential`, `direct`, `stream` のいずれか.
     logical,intent(in),optional :: big_endian
         !!ビッグエンディアンで開く場合. デフォルトは.false.
+    character(*),intent(in),optional :: status
     
     integer iost
-    character(:),allocatable :: endian_
+    character(:),allocatable :: endian_, status_
     character(256) errmsg
 
-    if ( present(big_endian) .and. big_endian .eqv. .true.) then
-        endian_ = "big_endian"
+    if ( present(status) ) then
+        status_ = status
+    else
+        status_ = "replace"
+    end if
+    
+    if ( present(big_endian) ) then
+        endian_ = merge("big_endian   ", "little_endian", big_endian)
     else
         endian_ = "little_endian"
     end if
 
-    open(newunit=unit, file=path, access=access, form="unformatted", convert=endian_, iostat=iost, iomsg=errmsg)
+    open(newunit=unit, file=path, access=access, form="unformatted", convert=trim(endian_), iostat=iost, iomsg=errmsg)
 
     if ( iost /= 0 ) then
         print "('error(',i0') :: ',A)",iost, trim(errmsg)
+        opened = .false.
+    else
+        opened = .true.
+    end if
+
+end function
+
+logical function open_as_ascii(unit, path, status) result(opened)
+    integer,intent(out) :: unit
+    character(*),intent(in) :: path
+    character(*),intent(in),optional :: status
+
+    character(:),allocatable :: status_
+    integer iost_
+    character(128) iomsg_
+
+    if ( present(status) ) then
+        status_ = status
+    else
+        status_ = "replace"
+    end if
+
+    open(newunit=unit, file=path, status=status_, iostat=iost_, iomsg=iomsg_)
+
+    if ( iost_ /= 0 ) then
+        print "('error(',i0') :: ',A)",iost_, trim(iomsg_)
         opened = .false.
     else
         opened = .true.

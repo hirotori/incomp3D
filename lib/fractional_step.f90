@@ -90,16 +90,17 @@ subroutine slvr_init_common(this, fld, grd, setting_case)
 
     call this%load_setting()
 
-    print "('   -------- ', A, ' ---------    ')", trim(adjustl(this%method_name))
-    print "('      - 3D unsteady problem                     ')"
-    print "('      - Convection : ', A)", merge("Up-wind", "Central", this%settings%conv_type=="ud")
-    print "('      - Diffusion  : ', A)", merge("compact", " large ", this%settings%diff_type==1)  
-    print "('      - face flux correction : ', A)", merge("Yes","No ",this%settings%correct_face_flux)
-    print "('      - SOR linear solver for Poisson           ')"
-    print "('   -----------------------------------------    ')"
+    print "('======= ', A, ' =======')", trim(adjustl(this%method_name))
+    print "('- 3D unsteady problem                     ')"
+    print "('- Convection : ', A)", merge("Up-wind", "Central", this%settings%conv_type=="ud")
+    print "('- Diffusion  : ', A)", merge("compact", " large ", this%settings%diff_type==1)  
+    print "('- face flux correction : ', A)", merge("Yes","No ",this%settings%correct_face_flux)
+    print "('- SOR linear solver for Poisson           ')"
+    print "('=========================================')"
 
     !OpenMP並列化に必要なデータ.
 #ifdef _OPENMP
+    print "('>>> Creating Red-Black coloring array ...')"
     call init_for_parallel_computing(this, grd)
 #endif
 end subroutine
@@ -134,7 +135,7 @@ subroutine init_for_parallel_computing(this, grd)
             error stop
         endif
 
-        print "('    Red-Black coloring : Red = ', i0, ', black = ', i0)", nr, nb
+        print "('Red-Black coloring : Red = ', i0, ', black = ', i0)", nr, nb
 
         allocate(this%c_black(3,nb), source = -99)
         allocate(this%c_red(3,nr), source = -99)
@@ -175,6 +176,8 @@ subroutine load_setting_from_file(this)
     type(base_slv_setting_t) settings
     character(:),allocatable :: fname
     namelist/solver_settings/settings
+
+    print "('>>> Loading solver setting file ...')"
 
     fname = "solver_settings.txt"
     if ( file_exists(fname) ) then

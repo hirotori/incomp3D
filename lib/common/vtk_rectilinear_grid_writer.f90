@@ -60,6 +60,8 @@ subroutine writeout(this, path, holder)
         call writeout_common_field_data(this, unit, holder)
     end if
 
+    print"(A)", ">>> output complete. path :: ", path
+    
 end subroutine
     
 end module 

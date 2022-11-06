@@ -54,7 +54,7 @@ contains
         end if
         close(unit)
         
-        print*, "output complete. path :: ", path
+        print"(A)", ">>> output complete. path :: ", path
     end subroutine
 
 end module vtk_structured_points_writer_m

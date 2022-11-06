@@ -43,6 +43,8 @@ subroutine set_bc_type(types, type_ids, properties, extents)
 
     integer(ip) l
 
+    print "(A)", ">>> Setting Boundary conditions ..."
+
     do l = 1, 6
         types(l)%type(:) = type_ids(:,l)
         types(l)%v_bc(:) = properties(1:3,l)
@@ -89,7 +91,7 @@ subroutine set_bc_type(types, type_ids, properties, extents)
         end do
     end block
 
-    print "(' -- Boundary condition Setup -- ')"
+    print "('======= Boundary condition Setup =======')"
 
     block
         character(1) :: label_(6) = ["i","i","j","j","k","k"]
