@@ -15,10 +15,12 @@ if(CMAKE_Fortran_COMPILER_ID MATCHES Intel)
     target_compile_options(incomp3d_util PRIVATE
         $<$<CONFIG:Debug>:-O0 -warn all -check all -traceback -fpp>
         $<$<CONFIG:Release>:-O2 -fpp>
+        $<$<CONFIG:RelWithDevInfo>:-O2 -fpp -p>
     )
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES GNU)
     target_compile_options(incomp3d_util PRIVATE
         $<$<CONFIG:Debug>: -O0 -Wall -fcheck=all -fbacktrace -cpp>
         $<$<CONFIG:Release>: -O2 -cpp>
+        $<$<CONFIG:RelWithDevInfo>:-O2 -cpp -pg>
     )
 endif()
