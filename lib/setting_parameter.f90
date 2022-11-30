@@ -8,7 +8,7 @@ module setting_parameter_m
     character(*),parameter :: current_file_version = "1.4"
 
     type case_setting
-        character(128),allocatable :: grid_file_name
+        character(128) :: grid_file_name
         integer(ip) :: nstart = 1
         integer(ip) :: nend = 10000
         integer(ip) :: nwrite = 100
