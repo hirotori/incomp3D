@@ -6,6 +6,7 @@ add_library(incomp3d STATIC
  fluid_field.f90
  fractional_step.f90
  fractional_step_implicit.f90
+ interpolation.f90
  mesh_reader.f90
  mesh.f90
  rectilinear_mesh.f90

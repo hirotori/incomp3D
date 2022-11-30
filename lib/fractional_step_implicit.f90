@@ -22,10 +22,11 @@ module fractional_step_implicit_m
         procedure :: init => init_solver_2
         procedure predict_pseudo_velocity
         procedure set_parameter
+        procedure print_parameter
 
     end type
 
-    public solver_fs_imp_t, calc_pseudo_velocity_common_core
+    public solver_fs_imp_t, calc_pseudo_velocity_common_core, set_matrix_
 contains
 subroutine set_parameter(this, iter_max, tolerance, alpha)
     !!中間速度を計算する反復法のためのパラメータを設定する.
@@ -41,6 +42,14 @@ subroutine set_parameter(this, iter_max, tolerance, alpha)
     this%iter_max = iter_max
     this%tolerance = tolerance
     this%alpha = alpha
+end subroutine
+
+subroutine print_parameter(this)
+    !!コンソールに中間速度の反復法パラメータを表示する.
+    class(solver_fs_imp_t),intent(in) :: this
+    print "('- velocity linear solver : SOR')"
+    print "('- tolerance              : ', g0)", this%tolerance
+    print "('- accelaration           : ', g0)", this%alpha
 end subroutine
 
 subroutine init_solver_2(this, fld, grd, setting_case)
@@ -63,10 +72,6 @@ subroutine init_solver_2(this, fld, grd, setting_case)
         grd%dv, grd%xc, grd%yc, grd%zc, setting_case%reynolds_number, setting_case%dt)
     allocate(this%rhs_(1:3,2:mx(1),2:mx(2),2:mx(3)))
 
-    print "('- velocity linear solver : SOR')"
-    print "('- tolerance              : ', g0)", this%tolerance
-    print "('- accelaration           : ', g0)", this%alpha
-
 end subroutine
 
 subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
@@ -80,7 +85,7 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:)
     integer(ip) i, j, k, l, imx, jmx, kmx
-    real(dp) rei
+    real(dp) nu
 
     call grid%get_extents_sub(imx, jmx, kmx)
 
@@ -91,9 +96,9 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
-        rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
+        ! nu = fluid%kinetic_viscosity(i,j,k)
         this%rhs_(:,i,j,k) = this%v0(:,i,j,k)*grid%dv(i,j,k) & 
-        - del_t*(conv(:,i,j,k) - 0.5_dp*rei*diff(:,i,j,k) - fluid%vol_force(:)*grid%dv(i,j,k))
+        - del_t*(conv(:,i,j,k) - 0.5_dp*diff(:,i,j,k) - fluid%vol_force(:)*grid%dv(i,j,k))
     end do
     end do        
     end do

@@ -15,11 +15,14 @@ module fluid_field_m
             !!@note 仮想セルにも勾配は配置されている. 2つのセル勾配から線形内挿したとき境界面の勾配となるように外挿されている.
 
         real(DP),allocatable :: kinetic_viscosity(:,:,:)
-            !!動粘性係数. LESの渦粘性係数もここに格納される.
+            !!動粘性係数 (= 1/Re). LESの渦粘性係数も含める( => 1/Re + nu_eddy).
         real(DP) :: vol_force(3) = 0.0_dp
         !     !!体積力. 外力として.
+        real(dp),private :: reynolds_number_
+            !!レイノルズ数.
         contains
         procedure,public :: init => init_field
+        procedure reynolds_number
     end type
 
     interface calc_gradient_tensor
@@ -47,9 +50,17 @@ subroutine init_field(this, imx, jmx, kmx, ic_u, ic_p, reynolds_number, body_for
     allocate(this%mflux_j(2:imx, 1:jmx, 2:kmx), source = 0.0_dp)
     allocate(this%mflux_k(2:imx, 2:jmx, 1:kmx), source = 0.0_dp)
     allocate(this%dudr(1:3,1:3,1:imx+1,1:jmx+1,1:kmx+1), source = 0.0_dp)
-    allocate(this%kinetic_viscosity(2:imx,2:jmx,2:kmx), source = reynolds_number)
+    allocate(this%kinetic_viscosity(1:imx+1,1:jmx+1,1:kmx+1), source = 1.0_dp/reynolds_number)
+    this%reynolds_number_ = reynolds_number
     this%vol_force(:) = body_force(:)
 end subroutine
+
+real(dp) function reynolds_number(this)
+    class(fluid_field_t),intent(in) :: this
+
+    reynolds_number = this%reynolds_number_
+
+end function
 
 !====================================================================
 subroutine calc_gradient_tensor_equil(extents, dv, ds, dx, velocity, dudr)
@@ -76,9 +87,9 @@ subroutine calc_gradient_tensor_equil(extents, dv, ds, dx, velocity, dudr)
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
-        dudr(:,1,i,j,k) = (-velocity(:,i,j,k) + velocity(:,i+1,j  ,k  ))/dx(1)*0.5_dp
-        dudr(:,2,i,j,k) = (-velocity(:,i,j,k) + velocity(:,i  ,j+1,k  ))/dx(2)*0.5_dp
-        dudr(:,3,i,j,k) = (-velocity(:,i,j,k) + velocity(:,i  ,j  ,k+1))/dx(3)*0.5_dp
+        dudr(:,1,i,j,k) = (-velocity(:,i-1,j,k) + velocity(:,i+1,j  ,k  ))/dx(1)*0.5_dp
+        dudr(:,2,i,j,k) = (-velocity(:,i,j-1,k) + velocity(:,i  ,j+1,k  ))/dx(2)*0.5_dp
+        dudr(:,3,i,j,k) = (-velocity(:,i,j,k-1) + velocity(:,i  ,j  ,k+1))/dx(3)*0.5_dp
     end do
     end do        
     end do

@@ -59,7 +59,9 @@ module fractional_step_m
         procedure calc_corrected_velocity
     end type
 
-    public solver_fs, slvr_init_common, calc_convective_and_diffusive_flux, mat_a, cal_face_velocity
+    public solver_fs, slvr_init_common, &
+           calc_convective_and_diffusive_flux, mat_a, &
+           cal_face_velocity, base_slv_setting_t
 contains
 subroutine init_solver(this, fld, grd, setting_case)
     !!ソルバを初期化する.
@@ -87,8 +89,6 @@ subroutine slvr_init_common(this, fld, grd, setting_case)
 
     !係数行列は1回だけ更新すれば良い.
     call set_matrix_p(this%coeffs_p, grd) 
-
-    call this%load_setting()
 
     print "('======= ', A, ' =======')", trim(adjustl(this%method_name))
     print "('- 3D unsteady problem                     ')"
@@ -252,7 +252,7 @@ subroutine proceed_time_step(this, grid, fluid, bc_types, dt, p_ref, sim_diverge
 
     call boundary_condition_velocity(grid%get_extents(), fluid%velocity, bc_types)
 
-    call this%calc_corrected_velocity(grid, fluid, dt, p_ref, bc_types, sim_diverged)
+    call this%calc_corrected_velocity(grid, fluid, fluid%pressure, dt, p_ref, bc_types, sim_diverged)
 
     !補正された新しい時間段階の速度に対する境界条件の適用.
     call boundary_condition_velocity(grid%get_extents(), fluid%velocity, bc_types)
@@ -272,7 +272,7 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     type(bc_t),intent(in) :: bc_types(:)
     
     integer(ip) imx, jmx, kmx, i, j, k
-    real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:), rei
+    real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:), nu
 
     call grid%get_extents_sub(imx, jmx, kmx)
 
@@ -283,15 +283,15 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     ! call fs_prediction_v2(imx, jmx, kmx, ds, dv, dx, del_t, re, force, v0, v, mi, mj, mk)
 
     !フラックスを作ってから後で右辺を計算する. メモリ量に不安がある場合は今まで通り上の方法で. 
-    !!@todo 境界条件を組み込むかどうか.
+    !@todo 境界条件を組み込むかどうか.
     call calc_convective_and_diffusive_flux(this, grid, fluid, this%v0, conv, diff)
 
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
-        rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
+        ! nu = fluid%kinetic_viscosity(i,j,k)
         fluid%velocity(:,i,j,k) = this%v0(:,i,j,k) - & 
-                               del_t*(conv(:,i,j,k) - rei*diff(:,i,j,k) - fluid%vol_force(:)*grid%dv(i,j,k))/grid%dv(i,j,k)
+                               del_t*(conv(:,i,j,k) - diff(:,i,j,k) - fluid%vol_force(:)*grid%dv(i,j,k))/grid%dv(i,j,k)
 
     end do
     end do
@@ -327,11 +327,15 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
 
 end subroutine
 
-subroutine calc_corrected_velocity(this, grid, fluid, del_t, p_ic, bc_types, diverged)
+subroutine calc_corrected_velocity(this, grid, fluid, potential, del_t, p_ic, bc_types, diverged)
     !!圧力Poisson方程式を解いて速度とフラックスを修正する.
     class(solver_fs),intent(in) :: this
     class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(inout) :: fluid
+        !!流れ場. 
+        !!@note 圧力は個別で引数に指定する.
+    real(dp),intent(inout) :: potential(:,:,:)
+        !!速度を補正するためのスカラーポテンシャル. 
     real(DP),intent(in) :: del_t
     real(DP),intent(in) :: p_ic
     type(bc_t),intent(in) :: bc_types(6)
@@ -350,20 +354,20 @@ subroutine calc_corrected_velocity(this, grid, fluid, del_t, p_ic, bc_types, div
         fluid%mflux_i, fluid%mflux_j, fluid%mflux_k, del_t, div_u_star)
 
 #ifdef _OPENMP
-    call fs_poisson_parallel(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, this%settings, p_ic, bc_types, diverged, &
+    call fs_poisson_parallel(imx, jmx, kmx, this%coeffs_p, div_u_star, potential, this%settings, p_ic, bc_types, diverged, &
     this%c_red, this%c_black)
 #else
-    call fs_poisson_v2(imx, jmx, kmx, this%coeffs_p, div_u_star, fluid%pressure, this%settings, p_ic, bc_types, diverged)
+    call fs_poisson_v2(imx, jmx, kmx, this%coeffs_p, div_u_star, potential, this%settings, p_ic, bc_types, diverged)
 #endif
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
 
-    call fs_correction_v2(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, grid%dv, del_t, fluid%pressure, fluid%velocity)
+    call fs_correction_v2(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, grid%dv, del_t, potential, fluid%velocity)
 
     !面の流束の速度補正. 
     if ( this%settings%correct_face_flux ) then
         call fs_correction_face_flux(imx, jmx, kmx, grid%dx, grid%dy, grid%dz, del_t, &
-                fluid%pressure, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
+                potential, fluid%mflux_i, fluid%mflux_j, fluid%mflux_k)
     else
         !圧力で補正しない場合. mi, mj, mkは単に速度の線形補間として取り扱う. 
         !その場合ここで更新する必要がある. vはこの時点で新しい段階の速度なので, mi, mj, mkも新しい速度の線形補間となる.
@@ -470,8 +474,9 @@ end subroutine
 
 subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, diff)
     !!右辺を計算するのに必要な移流と拡散流束を計算する.
-    !!@note 陰解法に必要な右辺項は外部で計算する.
+    !!@note 陰解法に必要な右辺項は外部で計算する. 拡散流束はすでに粘性係数を考慮している.
     !!@todo 面ループへの変更. 
+    ! use interpolation_m
     class(solver_fs),intent(in) :: this
     class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fluid
@@ -483,8 +488,8 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
         !!拡散流束. 空間内部のみに存在するので, インデックスは2から始まる.
     real(DP) me, mw, mn, ms, mt, mb
     real(dp),dimension(3) :: dif_e, dif_w, dif_n, dif_s, dif_t, dif_b
-    real(DP) rei
-
+    real(DP) nu_f(6)
+        !1:w, 2:e, 3:s, 4:n, 5:b, 6:t
 
     integer(IP) i, j, k, ld, imx, jmx, kmx
     real(dp) ds(3)
@@ -493,10 +498,13 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
 
     call grid%get_extents_sub(imx, jmx, kmx)
 
+    !kinetic viscosity on face
+    !分子粘性項は全て一定値で計算する.
+    nu_f(:) = 1.0_dp/fluid%reynolds_number()
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
-        rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
+        ! rei = 1.0_dp/fluid%kinetic_viscosity(i,j,k)
         ds(1) = grid%dsx(j,k)
         ds(2) = grid%dsy(i,k)
         ds(3) = grid%dsz(i,j)
@@ -553,7 +561,9 @@ subroutine calc_convective_and_diffusive_flux(this, grid, fluid, v0, convec, dif
 
         end if
 
-        diff(:,i,j,k) = (dif_e(:) + dif_w(:))*ds(1) + (dif_n(:) + dif_s(:))*ds(2) + (dif_t(:) + dif_b(:))*ds(3)
+        diff(:,i,j,k) = (nu_f(1)*dif_w(:) + nu_f(2)*dif_e(:))*ds(1) + &
+                        (nu_f(3)*dif_s(:) + nu_f(4)*dif_n(:))*ds(2) + &
+                        (nu_f(5)*dif_b(:) + nu_f(6)*dif_t(:))*ds(3)
         
         !右辺のフラックスは例えば次のように作成する.
         ! rhs_flux(:,i,j,k) = v0(:,i,j,k)*dv - del_t*(conv(:) - rei*diff(:) - force(:)*dv)
@@ -651,14 +661,14 @@ subroutine set_matrix_p(coeffs, grid)
     !妥当性テスト. 同じセルの副対角成分の和=主対角成分*-1.
     block
         integer :: count_ = 0
-        real(dp) sum_anb, ap_
+        real(dp) :: sum_anb, ap_, eps_ = epsilon(1.0d0)
         print "('-- check validation for the coefficients of matrix p --')"
         do k = 2, kmx
         do j = 2, jmx
         do i = 2, imx
             sum_anb = sum(coeffs%a_nb(:,i,j,k))
             ap_ = coeffs%a_p(i,j,k)
-            if ( sum_anb /= -ap_ ) then
+            if ( abs(sum_anb + ap_) >= eps_) then
                 print "(*(i0,:,', '))", i, j, k
                 print "(2(g0,1x))", sum_anb, -ap_
                 count_ = count_ + 1
