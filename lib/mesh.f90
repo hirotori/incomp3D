@@ -48,7 +48,7 @@ module mesh_m
         procedure,public :: alloc_arrays
         procedure,public :: calc_geometry
         procedure,public :: calc_ghost_cell_centers
-        procedure,public,non_overridable :: get_equil_dx
+        procedure,public,non_overridable :: get_equil_dx, get_equil_ds, get_equil_dv
         procedure,public :: print_self
     end type
     
@@ -131,6 +131,22 @@ function get_equil_dx(this) result(dx_eq)
     real(dp) dx_eq(3)
 
     dx_eq(:) = this%dx_const(:)
+
+end function
+
+function get_equil_dv(this) result(dv_eq)
+    class(equil_mesh_t),intent(in) :: this
+    real(dp) dv_eq
+
+    dv_eq = this%dv_const
+
+end function
+
+function get_equil_ds(this) result(ds_eq)
+    class(equil_mesh_t),intent(in) :: this
+    real(dp) ds_eq(3)
+
+    ds_eq(:) = this%ds_const(:)
 
 end function
 
