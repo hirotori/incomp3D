@@ -51,6 +51,7 @@ subroutine run(this, current_case, solver)
     call current_case%phase_pre_process(grid, fluid)
     
     !その後ソルバの共通パラメータ(空間スキームの選択)を設定する.
+    call solver%load_setting()
     call solver%init(fluid, grid, current_case%settings_case) 
     !次に境界条件を適用させ, 仮想セルを更新する. この処理はシミュレーターでなくソルバに任せる.
     !@note ここはシミュレーターに任せても問題は無いが, 面フラックスの修正有り/無しがソルバに委ねられているため.
@@ -67,11 +68,13 @@ subroutine run(this, current_case, solver)
         print "('max thread = ',i0)", nthread
         print "(A)", time_bar
 
-        call current_case%set_current_step(nstep)
+        ! call current_case%set_current_step(nstep)
 
         !どのアルゴリズムでも共通して計算させる.
         call calc_gradient_tensor(grid%get_extents(), grid%dv, grid%dsx, grid%dsy, grid%dsz, grid%dx, grid%dy, grid%dz, &
                                   fluid%velocity, fluid%dudr)
+
+        !@TODO LESの0方程式モデルをここに入れる.
 
         call solver%proceed_time_step(grid, fluid, current_case%bc_types, &
                                       current_case%settings_case%dt, current_case%settings_case%p_ref, sim_diverged)
@@ -82,7 +85,7 @@ subroutine run(this, current_case, solver)
             return
         end if
 
-        call current_case%phase_post_process(grid, fluid)
+        call current_case%phase_post_process(grid, fluid, nstep, real(nstep,dp)*dt)
 
         call current_case%check_flow_field(grid, fluid)
 

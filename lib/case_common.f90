@@ -40,14 +40,14 @@ module case_common_m
             !!各境界面の境界条件および境界値（速度, 圧力）を扱う.
         character(:),allocatable,private :: outdir_
             !!出力ディレクトリ.
-        integer(ip),private :: current_step_ = 0
+        ! integer(ip),private :: current_step_ = 0
         logical,private :: is_equil_mesh = .true.
         contains
-        procedure,non_overridable :: get_current_step
-        procedure,non_overridable :: get_current_time
-        procedure,non_overridable :: set_current_step
-        procedure,non_overridable :: set_output_directory
-        procedure,non_overridable :: get_current_output_directory
+        ! procedure,non_overridable :: get_current_step
+        ! procedure,non_overridable :: get_current_time
+        ! procedure,non_overridable :: set_current_step
+        ! procedure,non_overridable :: set_output_directory
+        procedure,non_overridable :: output_directory => get_current_output_directory
         procedure,non_overridable :: phase_pre_process
         procedure,non_overridable :: uses_an_equil_mesh
         procedure :: add_on_pre_process
@@ -61,32 +61,32 @@ module case_common_m
 
 contains
 
-pure integer(ip) function get_current_step(this)
-    !!現在の計算ステップを取得する.
-    class(case_common_t),intent(in) :: this
+! pure integer(ip) function get_current_step(this)
+!     !!現在の計算ステップを取得する.
+!     class(case_common_t),intent(in) :: this
 
-    get_current_step = this%current_step_
+!     get_current_step = this%current_step_
 
-end function
+! end function
 
-pure real(dp) function get_current_time(this)
-    !!現在の計算ステップを取得する.
-    class(case_common_t),intent(in) :: this
+! pure real(dp) function get_current_time(this)
+!     !!現在の計算ステップを取得する.
+!     class(case_common_t),intent(in) :: this
 
-    get_current_time = this%current_step_*this%settings_case%dt
+!     get_current_time = this%current_step_*this%settings_case%dt
 
-end function
+! end function
 
-subroutine set_output_directory(this, path)
-    !!出力ディレクトリを指定する.
-    class(case_common_t),intent(inout) :: this
-    character(*),intent(in) :: path
-        !!計算結果ファイルを出力するディレクトリのパス.
+! subroutine set_output_directory(this, path)
+!     !!出力ディレクトリを指定する.
+!     class(case_common_t),intent(inout) :: this
+!     character(*),intent(in) :: path
+!         !!計算結果ファイルを出力するディレクトリのパス.
 
-    this%outdir_ = path
+!     this%outdir_ = path
 
 
-end subroutine
+! end subroutine
 
 function get_current_output_directory(this) result(path)
     !!現在の出力先ディレクトリを返す.
@@ -97,14 +97,14 @@ function get_current_output_directory(this) result(path)
 
 end function
 
-subroutine set_current_step(this, current_step)
-    !!現在の計算ステップを記録する.
-    class(case_common_t),intent(inout) :: this
-    integer(ip),intent(in) :: current_step
+! subroutine set_current_step(this, current_step)
+!     !!現在の計算ステップを記録する.
+!     class(case_common_t),intent(inout) :: this
+!     integer(ip),intent(in) :: current_step
 
-    this%current_step_ = current_step
+!     this%current_step_ = current_step
 
-end subroutine
+! end subroutine
 
 logical function uses_an_equil_mesh(this)
     class(case_common_t),intent(in) :: this
@@ -162,11 +162,13 @@ subroutine add_on_pre_process(this, grid, fld)
     print "('Add-On process is being called from **case_common_t**')"
 end subroutine
 
-subroutine phase_post_process(this, grid, fld)
+subroutine phase_post_process(this, grid, fld, step, time)
     !!現時間段階の計算が終わった後に呼び出される. 
     class(case_common_t),intent(inout) :: this
     class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
+    integer(ip),intent(in) :: step
+    real(dp),intent(in) :: time
 
     print "('post process is being called from **case_common_t** ')"
 
