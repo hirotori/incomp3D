@@ -12,6 +12,11 @@ module boundary_condition_m
     integer(ip),parameter :: bc_outlet_unsteady = 4
     integer(ip),parameter :: bc_periodic_buffer = 5
     
+    character(20),dimension(5),parameter :: bc_name_dict = [character(20) :: "bc_fix_val", &
+                                                                "bc_fix_grad", &
+                                                                "bc_periodic", &
+                                                                "bc_out_unsteady", &
+                                                                "bc_periodic_buffer"]
     type bc_t
         !!version : 1.2
         !!境界条件構造体. 1.2から境界条件は固定勾配か固定値かで分岐させる.
@@ -21,9 +26,9 @@ module boundary_condition_m
             !!境界面の速度.
         real(dp) p_bc
             !!境界面の圧力.
-        integer(ip) :: index_ = -999
+        integer(ip),private :: index_ = -999
             !!仮想セルのインデックス. 
-        integer(ip) :: neighbor_index_(2) = -999
+        integer(ip),private :: neighbor_index_(2) = -999
             !!index_と対応するペアのセルのインデックス.
             !!圧力と速度とで違う場合がある.
             !!index_(1) for velocity, index_(2) for pressure.
@@ -102,6 +107,88 @@ subroutine set_bc_type(types, type_ids, properties, extents)
         end do
     end block
 
+end subroutine
+
+subroutine set_bc_to_single_patch(patch, patch_index, coordinate_extent, bc_id_u, bc_id_p, property, pair_index)
+    !!ある一つの境界面を設定する.
+    type(bc_t),intent(inout) :: patch
+        !!境界面.
+    integer(ip),intent(in) :: patch_index
+        !!境界面のインデックス. 1 or imax(, jmax, or kmax).
+        !!@note 
+        !! 構造格子の場合, 面はi, j, k方向に分類される. 
+        !!`patch_index` はそれぞれの方向においての最小あるいは最大番号でなければならない.
+        !!@endnote
+        !!@warning ほかの箇所で `set_bc_type` が呼び出される場合はこのメソッドを使うべきではない.
+    integer(ip),intent(in) :: coordinate_extent
+        !!面の最大番号. imax or jmax or kmax.
+    integer(ip),intent(in) :: bc_id_u
+    integer(ip),intent(in) :: bc_id_p
+    real(dp),intent(in) :: property(4)
+        !!境界面の物理量. [u,v,w,p]
+    integer(ip),intent(in),optional :: pair_index(2)
+        !!境界面のペアとなる面のインデックス. `bc_periodic_buffer`を用いる場合のみ有効.
+
+    if ( patch_index /= 1 .and. patch_index /= coordinate_extent ) then
+        print "(A)", "patch_index is invalid."
+        print "('patch_index must be equal to ""1"" or ""coordinate_extent"".')"
+        error stop 
+    end if
+    !i ( or j or k) = 1の場合, iが仮想セルのインデックス.
+    !i              = extentの場合, i+1が仮想セルのインデックス.
+    patch%index_ = merge(patch_index, patch_index + 1, patch_index == 1)
+    patch%v_bc(:) = property(1:3)
+    patch%p_bc = property(4)
+    patch%type(1:2) = [bc_id_u, bc_id_p]
+
+    select case(bc_id_u)
+        case(bc_periodic)
+            patch%neighbor_index_(1) = merge(coordinate_extent, 2, patch_index == 1) 
+            !i=1の場合, 境界セルはimax.
+            !i=imaxの場合, 境界セルは2
+        case(bc_periodic_buffer)
+            if ( .not. present(pair_index) ) then
+                error stop "pair_index unspecified."
+            else
+                patch%neighbor_index_(1) = pair_index(1)
+            end if
+        case default
+            patch%neighbor_index_(1) = merge(2, coordinate_extent, patch_index == 1)
+            !i=1の場合, 境界セルは2.
+            !i=imaxの場合, 仮想セルはimax
+    end select
+
+    select case(bc_id_p)
+    case(bc_periodic)
+        patch%neighbor_index_(2) = merge(coordinate_extent, 2, patch_index == 1) 
+        !i=1の場合, 境界セルはimax.
+        !i=imaxの場合, 境界セルは2
+    case(bc_periodic_buffer)
+        if ( .not. present(pair_index) ) then
+            error stop "pair_index unspecified."
+        else
+            patch%neighbor_index_(2) = pair_index(2)
+        end if
+    case default
+        patch%neighbor_index_(2) = merge(2, coordinate_extent, patch_index == 1)
+        !i=1の場合, 境界セルは2.
+        !i=imaxの場合, 仮想セルはimax
+    end select
+
+end subroutine
+
+subroutine print_patch_info(patch)
+    type(bc_t),intent(in) :: patch
+
+    print "('>>> Patch Information for patch ""',i0, '""')", patch%index_
+    print "(' BC for velocity :: ', A)", bc_name_dict(patch%type(1))
+    print "(' BC for pressure :: ', A)", bc_name_dict(patch%type(2))
+    print "(' boundary cell index = ', i0)", patch%index_
+    print "(' neighbor cell index = ', i0)", patch%neighbor_index_
+    print "(' property(velocity) = [', 3(g0.5,:,','), ']')", patch%v_bc
+    print "(' property(pressure) = ', g0.5)", patch%p_bc
+    print *, new_line("")
+    
 end subroutine
 
 
@@ -333,4 +420,36 @@ subroutine boundary_condition_pressure(extents, p, bc_type)
     ! p(1,2,2) = 0.0_dp
 
 end subroutine
+
+subroutine boundary_condition_viscosity(extents, viscosity, bctypes)
+    !!粘性係数の仮想セルにおける値を設定する. 速度境界条件に従う.
+    integer(ip),intent(in) :: extents(3)
+    real(dp),intent(inout) :: viscosity(:,:,:)
+    type(bc_t),intent(in) :: bctypes(6)
+    integer(IP) imx, jmx, kmx
+    integer(IP) inb, jnb, knb
+    integer(IP) i, j, k, l, m
+
+    imx = extents(1)
+    jmx = extents(2)
+    kmx = extents(3)
+
+    !i-dir
+    do m = 1, 2
+        i = bctypes(m)%index_
+        inb = bctypes(m)%neighbor_index_(1)
+
+        select case(bctypes(m)%type(1))
+        case(bc_fix_grad)
+
+        case(bc_fix_val)
+
+        case(bc_periodic, bc_periodic_buffer)
+            viscosity(i,2:jmx,2:kmx) = viscosity(inb,2:jmx,2:kmx)
+        
+        end select
+    end do
+
+end subroutine
+
 end module boundary_condition_m
