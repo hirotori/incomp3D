@@ -661,22 +661,24 @@ subroutine set_matrix_p(coeffs, grid)
     !妥当性テスト. 同じセルの副対角成分の和=主対角成分*-1.
     block
         integer :: count_ = 0
+        integer unit_
         real(dp) :: sum_anb, ap_, eps_ = epsilon(1.0d0)
         print "('-- check validation for the coefficients of matrix p --')"
+        open(newunit=unit_, file="coefficient_errors.txt")
         do k = 2, kmx
         do j = 2, jmx
         do i = 2, imx
             sum_anb = sum(coeffs%a_nb(:,i,j,k))
             ap_ = coeffs%a_p(i,j,k)
             if ( abs(sum_anb + ap_) >= eps_) then
-                print "(*(i0,:,', '))", i, j, k
-                print "(2(g0,1x))", sum_anb, -ap_
+                write(unit_, "(*(i0,:,', '))") i, j, k
+                write(unit_, "(2(g0,1x))") sum_anb, -ap_
                 count_ = count_ + 1
             end if
         end do
         end do        
         end do
-
+        close(unit_)
         if ( count_ == 0 ) then
             print "('All coefficients are valid.')"
         else
