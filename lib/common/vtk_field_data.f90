@@ -20,7 +20,8 @@ module vtk_field_data_m
         !!ファイルに登録するフィールドデータの構造体.
         character(:),allocatable :: name
         real(dp),allocatable :: val_r1(:) 
-        real(dp),allocatable :: val_r2(:,:) 
+        real(dp),allocatable :: val_r2(:,:)
+        real(dp),allocatable :: val_r3(:,:,:) 
         ! real(dp),pointer :: val_r1_ptr(:) => null() 
         ! real(dp),pointer :: val_r2_ptr(:,:) => null()
         contains
@@ -28,6 +29,7 @@ module vtk_field_data_m
         generic,public :: register_vector => register_r2, convert_r4_to_r2_and_register_
         procedure,private :: register_r1, convert_r3_to_r1_and_register_
         generic,public :: register_scalar => register_r1, convert_r3_to_r1_and_register_
+        procedure,public :: register_tensor => convert_r5_to_r2_and_register_
         procedure,public :: write_data => write_data_ascii
         procedure,public :: write_data_binary
     
@@ -65,8 +67,10 @@ subroutine convert_r4_to_r2_and_register_(holder, v_r4, lbounds, ubounds)
         !!@note 配列全体を指定する. 有効範囲はlbounds, uboundsで指定する.
     integer(ip),intent(in) :: lbounds(3)
         !!データを格納する配列のインデックスの下限.
+        !!@note ここはv_r4のrank2~4の下限を指定する.
     integer(ip),intent(in) :: ubounds(3)
         !!データを格納する配列のインデックスの上限.
+        !!@note ここはv_r4のrank2~4の上限を指定する.
 
     integer(ip) ist, jst, kst, imx, jmx, kmx, icmx
     integer(ip) astat
@@ -82,6 +86,37 @@ subroutine convert_r4_to_r2_and_register_(holder, v_r4, lbounds, ubounds)
 
     allocate(holder%val_r2(3,icmx), source = reshape(v_r4(1:3,ist:imx,jst:jmx,kst:kmx), shape=[3,icmx]), &
             stat = astat, errmsg = errmsg)
+
+    if ( astat /= 0 ) error stop trim(errmsg) 
+
+end subroutine
+
+subroutine convert_r5_to_r2_and_register_(holder, v_r5, lbounds, ubounds)
+    class(attrib_data_holder_t),intent(inout) :: holder
+    real(dp),intent(in) :: v_r5(:,:,:,:,:)
+        !!ベクトルデータ. rank1~2: components(x,y,z), rank2~4:index(i,j,k)
+        !!@note 配列全体(仮想セルも含む)を指定する. 有効範囲はlbounds, uboundsで指定する.
+    integer(ip),intent(in) :: lbounds(3)
+        !!データを格納する配列のインデックスの下限.
+        !!@note ここはv_r4のrank2~4の下限を指定する.
+    integer(ip),intent(in) :: ubounds(3)
+        !!データを格納する配列のインデックスの上限.
+        !!@note ここはv_r4のrank2~4の上限を指定する.
+
+    integer(ip) ist, jst, kst, imx, jmx, kmx, icmx
+    integer(ip) astat
+    character(256) errmsg
+
+    ist = lbounds(1)
+    jst = lbounds(2)
+    kst = lbounds(3)
+    imx = ubounds(1)
+    jmx = ubounds(2)
+    kmx = ubounds(3)
+    icmx = product(ubounds(:) - lbounds(:) + 1)
+
+    allocate(holder%val_r3(3,3,icmx), source = reshape(v_r5(1:3,1:3,ist:imx,jst:jmx,kst:kmx), shape=[3,3,icmx]), &
+    stat = astat, errmsg = errmsg)
 
     if ( astat /= 0 ) error stop trim(errmsg) 
 
@@ -163,6 +198,16 @@ subroutine write_data_ascii(holder, unit, data_size)
         do ic_ = lbound(holder%val_r2, dim=2), ubound(holder%val_r2, dim=2)
             write(unit, "(*(g0,1x))") holder%val_r2(1:, ic_)
         end do
+    else if ( allocated(holder%val_r3) ) then
+        write(unit,"(A)") "TENSORS "//holder%name//" double"
+
+        if ( size(holder%val_r3, dim=3) /= data_size ) error stop "ERROR (vtk_field_data) :: invalid data size."
+
+        do ic_ = lbound(holder%val_r3, dim=3), ubound(holder%val_r3, dim=3)
+            write(unit, "(*(g0,1x))") holder%val_r3(1, 1:3, ic_)
+            write(unit, "(*(g0,1x))") holder%val_r3(2, 1:3, ic_)
+            write(unit, "(*(g0,1x))") holder%val_r3(3, 1:3, ic_)
+        end do
     end if
 end subroutine
 
@@ -194,6 +239,18 @@ subroutine write_data_binary(holder, unit, data_size)
         do ic_ = lbound(holder%val_r2, dim=2), ubound(holder%val_r2, dim=2)
             write(unit) holder%val_r2(1:, ic_)
         end do
+
+    else if ( allocated(holder%val_r3)) then
+        write(unit) "VECTORS "//holder%name//" double"//LF_
+
+        if ( size(holder%val_r3, dim=3) /= data_size ) error stop "ERROR (vtk_field_data) :: invalid data size."
+
+        do ic_ = lbound(holder%val_r3, dim=3), ubound(holder%val_r3, dim=3)
+            write(unit) holder%val_r3(1:, 1, ic_)
+            write(unit) holder%val_r3(1:, 2, ic_)
+            write(unit) holder%val_r3(1:, 3, ic_)
+        end do
+        
     end if
 
     write(unit) LF_
