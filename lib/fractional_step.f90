@@ -29,6 +29,7 @@ module fractional_step_m
         integer(ip) :: diff_type = 1
             !!拡散項の評価方法. 1:通常の中心差分, 2:ステンシルが一つ飛びの中心差分. ハウスコードに対応.
         logical :: correct_face_flux = .true.
+        logical :: fix_p_average = .false.
     end type
 
     type solver_fs
@@ -342,6 +343,8 @@ subroutine calc_corrected_velocity(this, grid, fluid, potential, del_t, p_ic, bc
     logical,intent(out) :: diverged
 
     integer(IP) :: imx, jmx, kmx
+    integer(ip) i, j, k
+    real(dp) p_avg
     real(dp),allocatable :: div_u_star(:,:,:)
 
     call grid%get_extents_sub(imx, jmx, kmx)
@@ -361,6 +364,32 @@ subroutine calc_corrected_velocity(this, grid, fluid, potential, del_t, p_ic, bc
 #endif
     if(diverged) return
     !Poisson方程式の収束判定をパスした時点で圧力境界条件は満たされている.
+    
+    !圧力の平均値を固定する.
+    if ( this%settings%fix_p_average ) then
+        print "('>>> Fix pressure average')"
+        p_avg = 0.0_dp
+        !p(x,y,z) から, 
+        !____
+        ! p'  = p_ref となるようなp' = p - α を求める.
+        !_______   ___                     ___                               __
+        !(p - α) =  p - α = p_ref より, α = p - p_ref だから p' = p - α = p - p + p_ref 
+        do j = 2, jmx
+        do i = 2, imx
+        end do            
+        end do
+        do k = 2, kmx
+        do j = 2, jmx
+        do i = 2, imx
+            p_avg = p_avg + fluid%pressure(i,j,k)*grid%dv(i,j,k)
+        end do            
+        end do
+        end do
+        p_avg = p_avg/sum(grid%dv)
+
+        fluid%pressure(2:imx,2:jmx,2:kmx) = fluid%pressure(2:imx,2:jmx,2:kmx) - p_avg + p_ic
+        call boundary_condition_pressure(grid%get_extents(), fluid%pressure, bc_types)
+    end if
 
     call fs_correction_v2(imx, jmx, kmx, grid%dsx, grid%dsy, grid%dsz, grid%dv, del_t, potential, fluid%velocity)
 
@@ -663,7 +692,7 @@ subroutine set_matrix_p(coeffs, grid)
         integer :: count_ = 0
         integer unit_
         real(dp) :: sum_anb, ap_, eps_ = epsilon(1.0d0)
-        print "('-- check validation for the coefficients of matrix p --')"
+        print "('>>> check validation for the coefficients of matrix p --')"
         open(newunit=unit_, file="coefficient_errors.txt")
         do k = 2, kmx
         do j = 2, jmx
@@ -682,7 +711,7 @@ subroutine set_matrix_p(coeffs, grid)
         if ( count_ == 0 ) then
             print "('All coefficients are valid.')"
         else
-            print "('Warning :: Invalid cells are ', i0, '. ')", count_
+            print "('Warning :: Invalid cells are ', i0, '/', i0)", count_, grid%get_cell_count()
         end if
     end block
 
