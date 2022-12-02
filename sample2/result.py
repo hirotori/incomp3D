@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 #load csv
 y, u = np.loadtxt("ghia_u.csv", delimiter=",", unpack=True, skiprows=1, usecols=(0,1))
@@ -7,8 +8,8 @@ x, v = np.loadtxt("ghia_v.csv", delimiter=",", unpack=True, skiprows=1, usecols=
 
 #load txt
 nstep = 3000
-fname_u = "cavity_u{0}.txt".format(nstep)
-fname_v = "cavity_v{0}.txt".format(nstep)
+fname_u = os.path.join("cavity_result", "cavity_u{0}.txt".format(nstep))
+fname_v = os.path.join("cavity_result", "cavity_v{0}.txt".format(nstep))
 y2, u2 = np.loadtxt(fname_u, unpack=True, skiprows=1)
 x2, v2 = np.loadtxt(fname_v, unpack=True, skiprows=1)
 

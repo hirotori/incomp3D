@@ -24,7 +24,7 @@ subroutine add_on_pre_process(this, grid, fld)
     !!追加で初期状態を管理したい場合に呼び出す.
     use system_operator_m
     class(case_cavity_t),intent(inout) :: this
-    type(equil_mesh_t),intent(inout) :: grid
+    class(equil_mesh_t),intent(inout) :: grid
     type(fluid_field_t),intent(inout) :: fld
 
     !!セル数が奇数個でない場合ストップさせる.
@@ -42,11 +42,13 @@ subroutine add_on_pre_process(this, grid, fld)
 
 end subroutine
 
-subroutine phase_post_process(this, grid, fld)
+subroutine phase_post_process(this, grid, fld, step, time)
     !!追加で初期状態を管理したい場合に呼び出す.
     class(case_cavity_t),intent(inout) :: this
-    type(equil_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
+    integer(ip),intent(in) :: step
+    real(dp),intent(in) :: time
 
     !!キャビティの重心を通る, 鉛直線方向の速度x成分と, 水平線方向の速度y成分をファイルに書き出す.
     integer(ip) x_gc, y_gc
@@ -54,16 +56,17 @@ subroutine phase_post_process(this, grid, fld)
     character(:),allocatable :: fname
     integer(ip) nstep, unit
     integer(ip) i, j ,k
+    real(dp),save :: ke_prev = 0.0d0
+    real(dp) :: ke_, dt_
     !簡単のため, セル数は計算領域内に奇数個用意する. 
 
-    nstep = this%get_current_step()
     extents(:) = grid%get_extents()
-
+    dt_ = this%settings_case%dt
     x_gc = (2 + extents(1))/2
     y_gc = (2 + extents(2))/2
 
-    if ( mod(nstep,nwrite_uv) == 0 ) then
-        fname = get_filename_with_digit_("cavity_u",nstep,".txt")
+    if ( mod(step,nwrite_uv) == 0 ) then
+        fname = get_filename_with_digit_("cavity_u",step,".txt")
         open(newunit=unit, file=dir_//'/'//fname, status="replace")
             write(unit,"(A)") "y u"
             do k = 2, extents(3)
@@ -73,7 +76,7 @@ subroutine phase_post_process(this, grid, fld)
             end do
         close(unit)
 
-        fname = get_filename_with_digit_("cavity_v",nstep,".txt")
+        fname = get_filename_with_digit_("cavity_v",step,".txt")
         open(newunit=unit, file=dir_//'/'//fname, status="replace")
             write(unit,"(A)") "x v"
             do k = 2, extents(3)
@@ -86,6 +89,20 @@ subroutine phase_post_process(this, grid, fld)
 
     call calculate_vorticity(this%vorticity_, fld%dudr)
 
+    !定常判定をしてみる.
+    !1. 運動エネルギの総和の変化率.
+    ke_ = 0.0d0
+    do k = 2, extents(3)
+    do j = 2, extents(2)
+    do i = 2, extents(1)
+        ke_ = ke_ + 0.5d0*norm2(fld%velocity(:,i,j,k))**2.0d0*grid%dv(i,j,k)
+    end do
+    end do
+    end do
+
+    print"('>>> kinetic energy')"
+    print "('(ke_ - ke_prev)/(ke_prev*dt) = ', g0)", (ke_ - ke_prev)/(ke_*dt_)
+    ke_prev = ke_
 end subroutine
 
 subroutine phase_writeout(this, grid, fld, nstep)
@@ -93,12 +110,12 @@ subroutine phase_writeout(this, grid, fld, nstep)
     !!@note 現状, 書き出しサブルーチンは本モジュールのプライベートルーチンとなっている.
     !!@todo 書き出しサブルーチンの隔離.
     class(case_cavity_t),intent(in) :: this
-    type(equil_mesh_t),intent(in) :: grid
+    class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
     integer(ip),intent(in) :: nstep
     character(:),allocatable :: fname
 
-    fname = this%get_current_output_directory()
+    fname = this%output_directory()
     
     call writeout_(this, grid, fld, fname//"/"//"result_", nstep)
 
@@ -124,9 +141,8 @@ subroutine writeout_(this, grid, fld, basename, current_step)
     holders(3)%name = "Vorticity"
     call holders(3)%register_vector(this%vorticity_, [2,2,2], grid%get_extents())
 
-
-    call writeout_single_vtk_str_points(basename, current_step, grid%get_extents(), [real(dp) :: 0, 0, 0], &
-                                        grid%get_equil_dx(), holders)
+    call writeout_single_vtk_recti_grid(basename, current_step, grid%get_extents(), &
+        grid%xp, grid%yp, grid%zp, holders=holders)
     
 end subroutine
     

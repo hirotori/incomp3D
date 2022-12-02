@@ -4,32 +4,28 @@
 # Author        : T.Ikeda
 #==========================================================
 # メインプログラム名.
-SRC := ./src/case_cavity.f90\
-./src/fs3duns.f90
-
+SRC := cavitymesh.f90
 # ビルドされる実行プログラムの名称.
-TARGET = fs3duns
+TARGET = cavitymesh
 
 #コンパイラ
 FC := gfortran
-# FC := ifort
 
 #コンパイルオプション
-# FFLAGS := -O0 -fbacktrace -fopenmp
-FFLAGS := -O2 -fopenmp -pg
+FFLAGS := -g -O0 -fbacktrace -fcheck=all
 
-#モジュールファイルの場所
-MODDIR = ./obj
+#モジュールファイルの出力場所
+MODDIR = ./mod
 #----------------------------------------------------------
 # 以下共通
 #----------------------------------------------------------
 # モジュールファイルの場所.
-INCLUDE = ../build/mod
+INCLUDE = ../../build/mod
 # コンパイル済みアーカイブファイルの場所.
-LDFLAGS = -L../build/lib -lincomp3d -L../build/lib/common -lincomp3d_util
+LDFLAGS = -L../../build/lib -lincomp3d -L../../build/lib/common -lincomp3d_util
 
 ${TARGET}: ${SRC}
-	${FC} ${SRC} -J${MODDIR} -I${INCLUDE} ${LDFLAGS} -o $@ ${FFLAGS}
+	${FC} ${SRC} -J ${MODDIR} -I${INCLUDE} ${LDFLAGS} -o $@ ${FFLAGS}
 
 clean_output :
 	rm output/*
