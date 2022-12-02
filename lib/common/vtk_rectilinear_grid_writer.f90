@@ -61,6 +61,8 @@ subroutine writeout(this, path, holder)
     end if
 
     print"(A)", ">>> output complete. path :: ", path
+
+    close(unit)
     
 end subroutine
     
