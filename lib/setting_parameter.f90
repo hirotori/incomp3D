@@ -71,6 +71,7 @@ subroutine read_config_core(fname, setting_c, bc_ids, bc_properties)
         read(unit,"(A)",err=99) tmp_ 
         !コメント行も含まれるので, `!`以降を捨てる
         pos_end_ = index(tmp_, "!")
+        if (pos_end_ == 0) pos_end_ = len(tmp_)
         setting_c%grid_file_name = trim(adjustl(tmp_(1:pos_end_-1)))
     end block
     
