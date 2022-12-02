@@ -65,7 +65,15 @@ subroutine read_config_core(fname, setting_c, bc_ids, bc_properties)
             error stop
         end if
     end block
-    read(unit,"(A)",err=99) tmp_ ; setting_c%grid_file_name = trim(adjustl(tmp_))
+
+    block
+        integer pos_end_
+        read(unit,"(A)",err=99) tmp_ 
+        !コメント行も含まれるので, `!`以降を捨てる
+        pos_end_ = index(tmp_, "!")
+        setting_c%grid_file_name = trim(adjustl(tmp_(1:pos_end_-1)))
+    end block
+    
     read(unit,*,err=99) setting_c%nstart, setting_c%nend, setting_c%nwrite
     read(unit,*,err=99) setting_c%dt
     read(unit,*,err=99) setting_c%reynolds_number
