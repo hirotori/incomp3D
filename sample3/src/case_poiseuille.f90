@@ -46,11 +46,13 @@ subroutine add_on_pre_process(this, grid, fld)
 
 end subroutine
 
-subroutine phase_post_process(this, grid, fld)
+subroutine phase_post_process(this, grid, fld, step, time)
     !!現時間段階の計算が終わった後に呼び出される. 
     class(case_poiseuille_t),intent(inout) :: this
     class(equil_mesh_t),intent(in) :: grid
     type(fluid_field_t),intent(in) :: fld
+    integer(ip),intent(in) :: step
+    real(dp),intent(in) :: time
 
     real(dp) resid_, den_
     integer(ip) i, j, k, imx, jmx, kmx
@@ -77,7 +79,7 @@ subroutine phase_post_process(this, grid, fld)
 
     !!l2-normはファイルにストレージされる.
     if ( open_text_file(unit, "result.txt", "# time, l2-err") ) then
-        write(unit,"(*(g0,1x))") this%get_current_time(), resid_
+        write(unit,"(*(g0,1x))") time, resid_
     end if
 
 end subroutine

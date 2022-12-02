@@ -14,7 +14,7 @@ TARGET = fs3duns_pois
 FC := gfortran
 
 #コンパイルオプション
-FFLAGS := -O0 -fbacktrace -fcheck=all
+FFLAGS := -O0 -fopenmp -fbacktrace -fcheck=all
 
 #モジュールファイルの出力場所
 MODDIR = ./mod

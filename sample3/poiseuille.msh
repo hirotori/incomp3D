@@ -1,4 +1,0 @@
-equil-spaced
-for planar poiseuille flow
-41 9 2  !grid points (imax,jmax,kmax)
-10.0 2.00 2.00  !length (x,y,z)     
