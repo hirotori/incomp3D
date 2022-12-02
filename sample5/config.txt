@@ -1,0 +1,21 @@
+1.4   ! current config file version.
+mesh/channel_33x65x65.msh
+1 10 1  !time step (start,end,write_interval
+0.100E-004 !time spacing
+395.0 !Reynolds Number
+1.0 0.0 0.0  !body force (x,y,z) 
+1.0 !Pressure reference (also for initial condition)
+0.0 0.0 0.0  !initial condition for velocity (x,y,z)     
+3 3 0.0 0.0 0.0 1.0  !B.C. for i = 1    face. [bc_u, bc_p, u, v, w, p]
+3 3 0.0 0.0 0.0 1.0  !B.C. for i = imax face. [bc_u, bc_p, u, v, w, p]
+3 3 0.0 0.0 0.0 1.0  !B.C. for j = 1    face. [bc_u, bc_p, u, v, w, p]
+3 3 0.0 0.0 0.0 1.0  !B.C. for j = jmax face. [bc_u, bc_p, u, v, w, p]
+1 2 0.0 0.0 0.0 1.0  !B.C. for k = 1    face. [bc_u, bc_p, u, v, w, p]
+1 2 0.0 0.0 0.0 1.0  !B.C. for k = kmax face. [bc_u, bc_p, u, v, w, p]
+!**Boundary Condition**
+! Fix value             1
+! Fix gradient          2
+! Periodic              3
+! Outlet unsteady       4
+! Periodic with buffer  5
+!bc velocity(u,v,or w) interplated as a pair cell index. 
