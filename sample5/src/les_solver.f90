@@ -26,8 +26,9 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     
     real(dp),allocatable :: conv(:,:,:,:), diff(:,:,:,:), nu_eddy(:,:,:), diff_e(:,:,:,:)
     integer(ip) i, j, k, l, imx, jmx, kmx
-    real(dp) nu, re_
-    type(attrib_data_holder_t),allocatable :: holders(:)
+    real(dp) re_
+    ! type(attrib_data_holder_t),allocatable :: holders(:)
+    ! integer :: n_ = 0
 
     call grid%get_extents_sub(imx, jmx, kmx)
 
@@ -49,7 +50,7 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     !NOTE :: 現在, サブルーチン開発中. それまで仮想セルは1/Reとする. その場合の誤差など記録しておく.
 
     call calc_convective_and_diffusive_flux(this, grid, fluid, this%v0, conv, diff)
-    call calc_eddy_viscosity_term(this, grid, fluid%dudr, nu_eddy, this%v0, diff_e)
+    call calc_eddy_viscosity_term(this, grid, fluid%dudr, nu_eddy, this%v0, grid%dsx, grid%dsy, grid%dsz, diff_e)
 
     do k = 2, kmx
     do j = 2, jmx
@@ -65,11 +66,15 @@ subroutine predict_pseudo_velocity(this, grid, fluid, del_t, bc_types)
     
     !debug
     !渦粘性係数を出力.
-    allocate(holders(1))
-    holders(1)%name = "Eddy_Viscosity"
-    call holders(1)%register_scalar(nu_eddy, [2,2,2], [imx, jmx, kmx])
-    call writeout_single_vtk_recti_grid("test_eddy_", 9999, grid%get_extents(), grid%xp, grid%yp, grid%zp, holders=holders)
-
+    ! allocate(holders(3))
+    ! holders(1)%name = "Eddy_Viscosity"
+    ! call holders(1)%register_scalar(nu_eddy, [2,2,2], [imx, jmx, kmx])
+    ! holders(2)%name = "eddy_viscous"
+    ! call holders(2)%register_vector(diff_e, [1,1,1], [imx-1,jmx-1,kmx-1])
+    ! holders(3)%name = "viscous"
+    ! call holders(3)%register_vector(diff, [1,1,1], [imx-1,jmx-1,kmx-1])
+    ! call writeout_single_vtk_recti_grid("test_eddy_", n_, grid%get_extents(), grid%xp, grid%yp, grid%zp, holders=holders)
+    ! n_ = n_ + 1
 end subroutine
     
 subroutine les_0_Smagorinsky(dudr, re_const, dv, nu, zc)
@@ -87,8 +92,8 @@ subroutine les_0_Smagorinsky(dudr, re_const, dv, nu, zc)
         !!頂点z座標.
     integer i, j, k
     integer ubnds(3)
-    real(dp) delta_, dij(3,3), sij(3,3), reinv_, sij_norm
-    real(dp),parameter :: C_SM = 0.173_dp
+    real(dp) delta_, dij(3,3), sij(3,3), sij_norm
+    real(dp),parameter :: C_SM = 0.0650_dp
     
     real(dp) :: damping_
         !!van Driestの減衰関数(1 - exp(-C*z+/A))により壁面漸近挙動を再現する.
@@ -97,7 +102,7 @@ subroutine les_0_Smagorinsky(dudr, re_const, dv, nu, zc)
     integer kmid
     ubnds(:) = ubound(nu) - 1
 
-    reinv_ = 1.0_dp/re_const
+    ! reinv_ = 1.0_dp/re_const
     kmid = (2 + ubnds(3))/2
     do k = 2, ubnds(3)
     do j = 2, ubnds(2)
@@ -127,7 +132,7 @@ subroutine les_0_Smagorinsky(dudr, re_const, dv, nu, zc)
 
 end subroutine
 
-subroutine calc_eddy_viscosity_term(this, grid, dudr, nu_eddy, v0, diff)
+subroutine calc_eddy_viscosity_term(this, grid, dudr, nu_eddy, v0, dsx, dsy, dsz, diff)
     !!渦粘性モデル項を計算する.
     use interpolation_m
     class(solver_fs_imp_sm_t),intent(in) :: this
@@ -136,6 +141,9 @@ subroutine calc_eddy_viscosity_term(this, grid, dudr, nu_eddy, v0, diff)
     real(dp),intent(in) :: nu_eddy(:,:,:)
     real(DP),intent(in) :: v0(:,:,:,:)
         !!既知段階速度.
+    real(dp),intent(in) :: dsx(2:,2:)
+    real(dp),intent(in) :: dsy(2:,2:)
+    real(dp),intent(in) :: dsz(2:,2:)
     real(dp),intent(out) :: diff(:,2:,2:,2:)
         !!拡散流束. 空間内部のみに存在するので, インデックスは2から始まる.
     real(DP) me, mw, mn, ms, mt, mb
@@ -153,6 +161,10 @@ subroutine calc_eddy_viscosity_term(this, grid, dudr, nu_eddy, v0, diff)
     do k = 2, kmx
     do j = 2, jmx
     do i = 2, imx
+        ds(1) = dsx(j,k)
+        ds(2) = dsy(i,k)
+        ds(3) = dsz(i,j)
+        
         nu_f(1) = harmonic_like_interpolate(nu_eddy(i-1,j,k), nu_eddy(i  ,j,k), grid%dx(i-1), grid%dx(i  ))
         nu_f(2) = harmonic_like_interpolate(nu_eddy(i  ,j,k), nu_eddy(i+1,j,k), grid%dx(i  ), grid%dx(i+1))
         nu_f(3) = harmonic_like_interpolate(nu_eddy(i,j-1,k), nu_eddy(i,j  ,k), grid%dy(j-1), grid%dy(j  ))

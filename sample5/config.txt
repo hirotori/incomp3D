@@ -1,10 +1,10 @@
 1.4   ! current config file version.
 mesh/channel_33x65x65.msh
-1 10 1  !time step (start,end,write_interval
+1 30000 100  !time step (start,end,write_interval
 0.100E-004 !time spacing
 395.0 !Reynolds Number
 1.0 0.0 0.0  !body force (x,y,z) 
-1.0 !Pressure reference (also for initial condition)
+0.0 !Pressure reference (also for initial condition)
 0.0 0.0 0.0  !initial condition for velocity (x,y,z)     
 3 3 0.0 0.0 0.0 1.0  !B.C. for i = 1    face. [bc_u, bc_p, u, v, w, p]
 3 3 0.0 0.0 0.0 1.0  !B.C. for i = imax face. [bc_u, bc_p, u, v, w, p]
